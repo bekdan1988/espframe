@@ -27,6 +27,9 @@ globals:
   - id: immich_album_asset_id
     type: std::string
     initial_value: '""'
+  - id: immich_album_page
+    type: int
+    initial_value: '1'
 
 script:
   - id: immich_register_fetch_failure
@@ -272,15 +275,18 @@ script:
                   }
                   id(immich_fetch_started) = true;
                   id(immich_last_http_status) = 0;
-                  id(immich_album_time_bucket) = pick_immich_time_bucket(body);
+                  auto bucket = pick_immich_timeline_bucket(body);
+                  id(immich_album_time_bucket) = bucket.time_bucket;
+                  id(immich_album_page) = bucket.page;
                   if (id(immich_album_time_bucket).empty()) {
                     clear_slot_fetch_in_flight(id(target_slot), id(slot_flags));
-                    ESP_LOGW("immich", "No album time buckets in response");
+                    ESP_LOGW("immich", "Album has no usable timeline buckets");
                     id(immich_api_retries) = 0;
                     id(immich_retry_cooldown_until_ms) = millis() + 30000;
                     return;
                   }
-                  ESP_LOGD("immich", "Album bucket selected: %s", id(immich_album_time_bucket).c_str());
+                  ESP_LOGD("immich", "Album bucket selected: %s page %d of %d assets",
+                           id(immich_album_time_bucket).c_str(), id(immich_album_page), (int) bucket.count);
                   id(immich_fetch_album_bucket).execute();
           on_error:
             then:
@@ -316,9 +322,11 @@ script:
           id: http_req
           url: !lambda |-
             return id(immich_url).state + "/api/timeline/bucket?albumId=" +
-                   id(immich_album_selected_id) + "&timeBucket=" + id(immich_album_time_bucket);
+                   id(immich_album_selected_id) + "&timeBucket=" + id(immich_album_time_bucket) +
+                   "&page=" + std::to_string(id(immich_album_page)) +
+                   "&pageSize=" + std::to_string(IMMICH_ALBUM_PAGE_SIZE);
           capture_response: true
-          max_response_buffer_size: 96kB
+          max_response_buffer_size: 24kB
           request_headers:
             Accept: application/json
             x-api-key: !lambda 'return id(immich_api_key_text).state.c_str();'
@@ -336,7 +344,7 @@ script:
                   id(immich_album_asset_id) = pick_immich_timeline_asset_id(body, orientation);
                   if (id(immich_album_asset_id).empty()) {
                     clear_slot_fetch_in_flight(id(target_slot), id(slot_flags));
-                    ESP_LOGW("immich", "No usable album asset in bucket");
+                    ESP_LOGW("immich", "No usable album image in paged bucket response");
                     id(immich_api_retries) = 0;
                     id(immich_retry_cooldown_until_ms) = millis() + 30000;
                     return;
@@ -346,9 +354,9 @@ script:
             then:
               - lambda: |-
                   id(immich_api_retries)++;
-                  ESP_LOGW("immich", "Album bucket request error for slot %d (attempt %d)", id(target_slot), id(immich_api_retries));
+                  ESP_LOGW("immich", "Paged album bucket request error for slot %d (attempt %d)", id(target_slot), id(immich_api_retries));
                   clear_slot_fetch_in_flight(id(target_slot), id(slot_flags));
-                  id(immich_diag_reason) = "album bucket request error";
+                  id(immich_diag_reason) = "paged album bucket request error";
                   id(log_immich_diag).execute();
               - if:
                   condition:
@@ -395,7 +403,7 @@ script:
                     id(photo_orientation_filter).current_option());
                   if (img_url.empty()) {
                     clear_slot_fetch_in_flight(id(target_slot), id(slot_flags));
-                    ESP_LOGW("immich", "Album asset parse failed");
+                    ESP_LOGW("immich", "Album asset metadata parse failed");
                     id(immich_api_retries) = 0;
                     id(immich_retry_cooldown_until_ms) = millis() + 30000;
                     return;

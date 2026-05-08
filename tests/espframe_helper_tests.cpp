@@ -154,6 +154,30 @@ static void test_immich_body_helpers() {
          std::string::npos);
   assert(build_immich_search_body(1, false, "Person", "", "p1,p2").find("\"personIds\":[\"p1\"]") !=
          std::string::npos);
+
+  std::vector<ImmichTimelineBucketInfo> large_album_buckets = {
+      {"2026-05-01", 848},
+      {"2026-04-01", 12},
+  };
+  ImmichTimelineBucketChoice bucket =
+      pick_immich_timeline_bucket_from_choices(large_album_buckets);
+  assert(bucket.time_bucket == "2026-05-01");
+  assert(bucket.count == 848);
+  assert(bucket.page == 1);
+  assert(immich_album_page_for_count(848) == 1);
+  assert(immich_album_page_for_count(848, 16) <= 53);
+
+  std::vector<ImmichTimelineAssetCandidate> timeline_page = {
+      {"video", false, true, 1.0f},
+      {"portrait", true, true, 0.75f},
+      {"landscape", true, true, 1.5f},
+  };
+  assert(pick_immich_timeline_asset_id_from_candidates(timeline_page, "Any") == "portrait");
+  assert(pick_immich_timeline_asset_id_from_candidates(timeline_page, "Portrait Only") == "portrait");
+  assert(pick_immich_timeline_asset_id_from_candidates(timeline_page, "Landscape Only") == "landscape");
+  assert(pick_immich_timeline_asset_id_from_candidates({}, "Any").empty());
+  assert(pick_immich_timeline_asset_id_from_candidates({{"no-ratio", true, false, 0.0f}},
+                                                       "Portrait Only").empty());
 }
 
 static SlotMeta make_slot(const std::string &asset_id, bool portrait) {

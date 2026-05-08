@@ -176,6 +176,7 @@ text:
       - lambda: |-
           std::string v = decode_url_commas(x);
           id(immich_album_ids).publish_state(v);
+          global_preferences->sync();
           ESP_LOGI("immich", "Album IDs configured (%d chars)", v.length());
       - script.execute: auto_apply_photo_source
 
@@ -194,6 +195,7 @@ text:
     set_action:
       - lambda: |-
           id(immich_album_labels).publish_state(x);
+          global_preferences->sync();
           ESP_LOGI("immich", "Album labels configured (%d chars)", x.length());
 
   - platform: template
@@ -212,6 +214,7 @@ text:
       - lambda: |-
           std::string v = decode_url_commas(x);
           id(immich_person_ids).publish_state(v);
+          global_preferences->sync();
           ESP_LOGI("immich", "Person IDs configured (%d chars)", v.length());
       - script.execute: auto_apply_photo_source
 
@@ -230,6 +233,7 @@ text:
     set_action:
       - lambda: |-
           id(immich_person_labels).publish_state(x);
+          global_preferences->sync();
           ESP_LOGI("immich", "Person labels configured (%d chars)", x.length());
 
 # -----------------------------------------------------------------------------

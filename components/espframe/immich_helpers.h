@@ -8,6 +8,7 @@
 #include <vector>
 
 static constexpr uint16_t ZOOM_IDENTITY = 256;
+static constexpr uint16_t IMMICH_ALBUM_PAGE_SIZE = 16;
 
 struct ImmichAssetMeta {
   // Normalized subset of the Immich asset response used by the slideshow UI.
@@ -32,6 +33,24 @@ struct ImmichDateRange {
   std::string from;
   std::string to;
   bool relative_skipped_for_invalid_time = false;
+};
+
+struct ImmichTimelineBucketChoice {
+  std::string time_bucket;
+  uint32_t count = 0;
+  uint32_t page = 1;
+};
+
+struct ImmichTimelineBucketInfo {
+  std::string time_bucket;
+  uint32_t count = 0;
+};
+
+struct ImmichTimelineAssetCandidate {
+  std::string asset_id;
+  bool is_image = true;
+  bool has_ratio = false;
+  float ratio = 0.0f;
 };
 
 inline int immich_days_in_month(int year, int month) {
@@ -203,6 +222,67 @@ inline bool photo_orientation_matches(const ImmichAssetMeta &meta, const std::st
   return true;
 }
 
+inline uint32_t immich_album_page_for_count(uint32_t count,
+                                            uint16_t page_size = IMMICH_ALBUM_PAGE_SIZE) {
+  if (page_size == 0) page_size = IMMICH_ALBUM_PAGE_SIZE;
+  if (count == 0) count = 1;
+  uint32_t pages = (count + page_size - 1) / page_size;
+  if (pages == 0) pages = 1;
+  return (esp_random() % pages) + 1;
+}
+
+inline ImmichTimelineBucketChoice pick_immich_timeline_bucket_from_choices(
+    const std::vector<ImmichTimelineBucketInfo> &buckets,
+    uint16_t page_size = IMMICH_ALBUM_PAGE_SIZE) {
+  std::vector<ImmichTimelineBucketInfo> choices;
+  uint32_t total = 0;
+
+  for (const auto &bucket : buckets) {
+    if (bucket.time_bucket.empty()) continue;
+    uint32_t count = bucket.count == 0 ? 1 : bucket.count;
+    choices.push_back({bucket.time_bucket, count});
+    total += count;
+  }
+
+  if (choices.empty() || total == 0) return {};
+
+  uint32_t pick = esp_random() % total;
+  uint32_t seen = 0;
+  for (const auto &choice : choices) {
+    seen += choice.count;
+    if (pick < seen) {
+      return {choice.time_bucket, choice.count,
+              immich_album_page_for_count(choice.count, page_size)};
+    }
+  }
+
+  const auto &choice = choices.back();
+  return {choice.time_bucket, choice.count,
+          immich_album_page_for_count(choice.count, page_size)};
+}
+
+inline std::string pick_immich_timeline_asset_id_from_candidates(
+    const std::vector<ImmichTimelineAssetCandidate> &assets,
+    const std::string &orientation_filter = "Any") {
+  std::vector<std::string> candidates;
+
+  for (const auto &asset : assets) {
+    if (asset.asset_id.empty() || !asset.is_image) continue;
+
+    if (orientation_filter == "Portrait Only" || orientation_filter == "Landscape Only") {
+      if (!asset.has_ratio || asset.ratio <= 0.0f) continue;
+      bool portrait = asset.ratio < 1.0f;
+      if (orientation_filter == "Portrait Only" && !portrait) continue;
+      if (orientation_filter == "Landscape Only" && portrait) continue;
+    }
+
+    candidates.push_back(asset.asset_id);
+  }
+
+  if (candidates.empty()) return "";
+  return candidates[esp_random() % candidates.size()];
+}
+
 // ============================================================================
 // Immich asset parser — parse JSON asset and fill meta
 // ============================================================================
@@ -333,38 +413,29 @@ inline std::string parse_immich_asset(const std::string &body,
   return "";
 }
 
-inline std::string pick_immich_time_bucket(const std::string &body) {
+inline ImmichTimelineBucketChoice pick_immich_timeline_bucket(
+    const std::string &body,
+    uint16_t page_size = IMMICH_ALBUM_PAGE_SIZE) {
   auto doc = esphome::json::parse_json(body);
-  if (doc.isNull() || !doc.is<JsonArray>()) return "";
-
-  struct BucketChoice {
-    std::string time_bucket;
-    uint32_t count;
-  };
+  if (doc.isNull() || !doc.is<JsonArray>()) return {};
 
   JsonArray buckets = doc.as<JsonArray>();
-  std::vector<BucketChoice> choices;
-  uint32_t total = 0;
+  std::vector<ImmichTimelineBucketInfo> choices;
 
   for (size_t i = 0; i < buckets.size(); i++) {
     JsonObject bucket = buckets[i].as<JsonObject>();
     if (bucket.isNull() || !bucket["timeBucket"].is<const char *>()) continue;
     int count = bucket["count"].is<int>() ? bucket["count"].as<int>() : 1;
     if (count <= 0) count = 1;
-    choices.push_back({bucket["timeBucket"].as<std::string>(), static_cast<uint32_t>(count)});
-    total += static_cast<uint32_t>(count);
+    choices.push_back({bucket["timeBucket"].as<std::string>(),
+                       static_cast<uint32_t>(count)});
   }
 
-  if (choices.empty() || total == 0) return "";
+  return pick_immich_timeline_bucket_from_choices(choices, page_size);
+}
 
-  uint32_t pick = esp_random() % total;
-  uint32_t seen = 0;
-  for (const auto &choice : choices) {
-    seen += choice.count;
-    if (pick < seen) return choice.time_bucket;
-  }
-
-  return choices.back().time_bucket;
+inline std::string pick_immich_time_bucket(const std::string &body) {
+  return pick_immich_timeline_bucket(body).time_bucket;
 }
 
 inline std::string pick_immich_timeline_asset_id(const std::string &body,
@@ -378,29 +449,25 @@ inline std::string pick_immich_timeline_asset_id(const std::string &body,
 
   JsonArray is_images = bucket["isImage"].as<JsonArray>();
   JsonArray ratios = bucket["ratio"].as<JsonArray>();
-  std::vector<std::string> candidates;
+  std::vector<ImmichTimelineAssetCandidate> candidates;
 
   for (size_t i = 0; i < ids.size(); i++) {
     if (!ids[i].is<const char *>()) continue;
-    if (!is_images.isNull() && is_images[i].is<bool>() && !is_images[i].as<bool>()) continue;
 
-    if (orientation_filter == "Portrait Only" || orientation_filter == "Landscape Only") {
-      if (ratios.isNull()) continue;
-      float ratio = 0.0f;
-      if (ratios[i].is<float>() || ratios[i].is<double>() || ratios[i].is<int>()) {
-        ratio = ratios[i].as<float>();
-      }
-      if (ratio <= 0.0f) continue;
-      bool portrait = ratio < 1.0f;
-      if (orientation_filter == "Portrait Only" && !portrait) continue;
-      if (orientation_filter == "Landscape Only" && portrait) continue;
+    ImmichTimelineAssetCandidate candidate;
+    candidate.asset_id = ids[i].as<std::string>();
+    if (!is_images.isNull() && is_images[i].is<bool>()) {
+      candidate.is_image = is_images[i].as<bool>();
     }
-
-    candidates.push_back(ids[i].as<std::string>());
+    if (!ratios.isNull() &&
+        (ratios[i].is<float>() || ratios[i].is<double>() || ratios[i].is<int>())) {
+      candidate.has_ratio = true;
+      candidate.ratio = ratios[i].as<float>();
+    }
+    candidates.push_back(candidate);
   }
 
-  if (candidates.empty()) return "";
-  return candidates[esp_random() % candidates.size()];
+  return pick_immich_timeline_asset_id_from_candidates(candidates, orientation_filter);
 }
 
 inline std::string find_immich_portrait_companion_url(const std::string &body,
