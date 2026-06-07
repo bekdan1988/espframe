@@ -667,6 +667,7 @@ def check_touch_controls_metadata(product: dict, errors: list[str]) -> None:
 
     for needle in ("tap to wake", "double-tap to advance to the next photo", "press-and-hold to sleep"):
         require_contains(readme, needle, "README.md", errors)
+    require_contains(readme, "wake, sleep, or advance to the next photo", "README.md", errors)
     require_contains(troubleshooting_docs, "wake, sleep, or next-photo gestures", "docs/troubleshooting.md", errors)
     require_contains(screen_settings_docs, "same sleep/wake behavior as the touchscreen controls", "docs/screen-settings.md", errors)
     for needle in ("slideshow_on_press", "slideshow_on_short_click", "last_short_tap_ms", "immich_advance_forward"):

@@ -26,7 +26,7 @@ Espframe is for people who want their photos out in the room, not hidden on a ph
   Adjust brightness, warm up a panel that looks too blue, use a softer night tone after sunset, and schedule the display to turn off overnight.
 
 - **Control it from the frame or a browser**  
-  Use simple touch gestures to wake, sleep, or skip photos. Open the built-in web page on your phone or computer to change photo sources, timing, brightness, Immich settings, and display options.
+  Use simple touch gestures to wake, sleep, or advance to the next photo. Open the built-in web page on your phone or computer to change photo sources, timing, brightness, Immich settings, and display options.
 
 - **Use Home Assistant if you want to, but it is not required**  
   Espframe works by itself. If you already use Home Assistant, it can also appear there as an ESPHome device for dashboard controls, automations, and updates.
