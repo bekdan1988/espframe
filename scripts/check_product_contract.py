@@ -408,6 +408,20 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
             errors.append(f"project.{field} must be a non-empty list")
         elif any(not isinstance(value, str) or not value.strip() for value in values):
             errors.append(f"project.{field} must only contain non-empty strings")
+    for field in ("date_filter_modes", "metadata_overlay_fields"):
+        values = project.get(field, [])
+        if not isinstance(values, list) or not values:
+            errors.append(f"project.{field} must be a non-empty list")
+        elif any(not isinstance(value, str) or not value.strip() for value in values):
+            errors.append(f"project.{field} must only contain non-empty strings")
+    for field in (
+        "date_filter_relative_anchor",
+        "date_filter_time_source",
+        "portrait_pairing_behavior",
+        "portrait_pairing_rotation_behavior",
+    ):
+        if not str(project.get(field, "")).strip():
+            errors.append(f"project.{field} is required")
     screen_schedule_effects = project.get("screen_schedule_off_effects", [])
     if not isinstance(screen_schedule_effects, list) or not screen_schedule_effects:
         errors.append("project.screen_schedule_off_effects must be a non-empty list")
@@ -1164,6 +1178,134 @@ def check_setup_flow_metadata(product: dict, errors: list[str]) -> None:
         "Done",
     ):
         require_contains(web_template, needle, rel(WEB_TEMPLATE), errors)
+
+
+def check_photo_display_metadata(product: dict, errors: list[str]) -> None:
+    project = product["project"]
+    date_filter_modes = [str(value).strip() for value in project.get("date_filter_modes", []) if str(value).strip()]
+    date_filter_relative_anchor = str(project.get("date_filter_relative_anchor", "")).strip()
+    date_filter_time_source = str(project.get("date_filter_time_source", "")).strip()
+    portrait_pairing_behavior = str(project.get("portrait_pairing_behavior", "")).strip()
+    portrait_pairing_rotation_behavior = str(project.get("portrait_pairing_rotation_behavior", "")).strip()
+    metadata_overlay_fields = [
+        str(value).strip() for value in project.get("metadata_overlay_fields", []) if str(value).strip()
+    ]
+
+    settings_by_key = {str(setting.get("key", "")).strip(): setting for setting in product["settings"]}
+    date_filter_setting = settings_by_key.get("date_filter_mode")
+    if not date_filter_setting:
+        errors.append("product settings must include date_filter_mode")
+    elif date_filter_modes and date_filter_setting.get("options") != date_filter_modes:
+        errors.append("project.date_filter_modes must match the date_filter_mode setting options")
+
+    for key in ("photo_metadata_date_enabled", "photo_metadata_location_enabled", "portrait_pairing"):
+        setting = settings_by_key.get(key)
+        if not setting:
+            errors.append(f"product settings must include {key}")
+        elif setting.get("default") is not True:
+            errors.append(f"{key} default must be true")
+
+    readme = read(ROOT / "README.md", errors)
+    index_docs = read(ROOT / "docs" / "index.md", errors)
+    photo_docs = read(ROOT / "docs" / "photo-sources.md", errors)
+    web_template = read(WEB_TEMPLATE, errors)
+    filter_yaml = read(ROOT / "common" / "addon" / "immich_filter.yaml", errors)
+    api_yaml = read(ROOT / "common" / "addon" / "immich_api.yaml", errors)
+    slideshow_yaml = read(ROOT / "common" / "addon" / "immich_slideshow.yaml", errors)
+    helper_header = read(ROOT / "components" / "espframe" / "immich_helpers.h", errors)
+    helper_tests = read(ROOT / "tests" / "espframe_helper_tests.cpp", errors)
+
+    for mode in date_filter_modes:
+        for label, text in (
+            ("docs/photo-sources.md", photo_docs),
+            ("common/addon/immich_filter.yaml", filter_yaml),
+            (rel(WEB_TEMPLATE), web_template),
+            ("tests/espframe_helper_tests.cpp", helper_tests),
+        ):
+            require_contains(text, mode, label, errors)
+    if date_filter_relative_anchor:
+        require_contains(photo_docs, date_filter_relative_anchor, "docs/photo-sources.md", errors)
+    if date_filter_time_source:
+        require_contains(photo_docs, date_filter_time_source, "docs/photo-sources.md", errors)
+    for needle in (
+        "resolve_immich_date_filter",
+        "build_immich_date_filter_extra",
+        "build_immich_companion_date_filter_extra",
+        "relative_skipped_for_invalid_time",
+    ):
+        require_contains(helper_header, needle, "components/espframe/immich_helpers.h", errors)
+        require_contains(helper_tests, needle, "tests/espframe_helper_tests.cpp", errors)
+    for needle in (
+        "resolve_immich_date_filter",
+        "build_immich_date_filter_extra",
+        "Relative date filter skipped",
+    ):
+        require_contains(api_yaml, needle, "common/addon/immich_api.yaml", errors)
+    for needle in (
+        "Filter by Date",
+        "From",
+        "Until",
+        "isValidDate",
+        "scheduleFilterApply",
+        "Relative Range",
+        "Fixed Range",
+    ):
+        require_contains(web_template, needle, rel(WEB_TEMPLATE), errors)
+
+    if portrait_pairing_behavior:
+        require_contains(readme, portrait_pairing_behavior, "README.md", errors)
+    for needle in ("Portrait Pairing", "portrait photos taken on the same day", "side-by-side"):
+        require_contains(index_docs, needle, "docs/index.md", errors)
+    for needle in ("Portrait Pairing", "side-by-side", "landscape screens"):
+        require_contains(photo_docs, needle, "docs/photo-sources.md", errors)
+    if portrait_pairing_rotation_behavior:
+        require_contains(photo_docs, portrait_pairing_rotation_behavior, "docs/photo-sources.md", errors)
+        require_contains(web_template, portrait_pairing_rotation_behavior, rel(WEB_TEMPLATE), errors)
+    for needle in (
+        "Photos: Portrait Pairing",
+        "companion portrait",
+        "same day",
+        "immich_fetch_portrait_companion",
+        "build_immich_companion_date_filter_extra",
+        "find_immich_portrait_companion_url",
+    ):
+        require_contains(api_yaml + slideshow_yaml, needle, "portrait pairing firmware", errors)
+    for needle in ("Portrait Pairing", "isPortraitScreenRotation", "portrait_pairing"):
+        require_contains(web_template, needle, rel(WEB_TEMPLATE), errors)
+    for needle in (
+        "test_slideshow_component_portrait_flow",
+        "test_slideshow_component_companion_result_flow",
+        "on_companion_found",
+    ):
+        require_contains(helper_tests, needle, "tests/espframe_helper_tests.cpp", errors)
+
+    for field in metadata_overlay_fields:
+        for label, text in (
+            ("docs/photo-sources.md", photo_docs),
+            (rel(WEB_TEMPLATE), web_template),
+            ("common/addon/immich_slideshow.yaml", slideshow_yaml),
+        ):
+            require_contains(text, field, label, errors)
+    for needle in (
+        "Metadata",
+        "Date Format",
+        "Date Taken Format",
+        "Relative Date",
+        "Date Taken",
+        "photo_metadata_date_enabled",
+        "photo_metadata_location_enabled",
+    ):
+        require_contains(web_template, needle, rel(WEB_TEMPLATE), errors)
+    for needle in (
+        "Device: Metadata Date",
+        "Device: Metadata Location",
+        "Device: Metadata Date Format",
+        "Device: Metadata Date Taken Format",
+        "update_photo_metadata_display",
+        "location",
+        "localDateTime",
+    ):
+        require_contains(slideshow_yaml + helper_header, needle, "metadata overlay firmware", errors)
 
 
 def check_public_manifest_urls(product: dict, errors: list[str]) -> None:
@@ -1978,6 +2120,7 @@ def main() -> int:
     check_clock_time_metadata(product, errors)
     check_photo_source_metadata(product, errors)
     check_setup_flow_metadata(product, errors)
+    check_photo_display_metadata(product, errors)
     check_devices(product, errors)
     check_public_manifest_urls(product, errors)
     check_public_site_references(product, errors)

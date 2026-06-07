@@ -116,6 +116,8 @@ Use **Layout** to control how photos are chosen and fitted to the screen.
 | **Display Mode** | Fill | Fill crops to cover the screen; Fit letterboxes without cropping. |
 <!-- ESPFRAME:SETTINGS_TABLE layout END -->
 
+Portrait pairing is disabled while the screen is in portrait rotation.
+
 ---
 
 ## Metadata
