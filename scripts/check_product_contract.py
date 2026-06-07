@@ -253,6 +253,7 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
         "home_assistant_url",
         "home_assistant_requirement",
         "home_assistant_integration_platform",
+        "device_debug_update_interval",
         "firmware_update_source",
         "firmware_beta_channel_label",
         "firmware_manual_check_behavior",
@@ -365,6 +366,17 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
             for field in ("name", "type", "description"):
                 if not str(entity.get(field, "")).strip():
                     errors.append(f"project.home_assistant_network_entities entry is missing {field}")
+    diagnostic_entities = project.get("home_assistant_diagnostic_entities", [])
+    if not isinstance(diagnostic_entities, list) or not diagnostic_entities:
+        errors.append("project.home_assistant_diagnostic_entities must be a non-empty list")
+    else:
+        for entity in diagnostic_entities:
+            if not isinstance(entity, dict):
+                errors.append("project.home_assistant_diagnostic_entities entries must be objects")
+                continue
+            for field in ("name", "type", "description"):
+                if not str(entity.get(field, "")).strip():
+                    errors.append(f"project.home_assistant_diagnostic_entities entry is missing {field}")
     for field in ("network_wifi_strength_source", "network_wifi_strength_update_interval"):
         if not str(project.get(field, "")).strip():
             errors.append(f"project.{field} is required")
@@ -748,6 +760,8 @@ def check_home_assistant_metadata(product: dict, errors: list[str]) -> None:
     platform = str(project.get("home_assistant_integration_platform", "")).strip()
     features = project.get("home_assistant_integration_features", [])
     network_entities = project.get("home_assistant_network_entities", [])
+    diagnostic_entities = project.get("home_assistant_diagnostic_entities", [])
+    debug_update_interval = str(project.get("device_debug_update_interval", "")).strip()
     wifi_strength_source = str(project.get("network_wifi_strength_source", "")).strip()
     wifi_strength_update_interval = str(project.get("network_wifi_strength_update_interval", "")).strip()
 
@@ -756,6 +770,8 @@ def check_home_assistant_metadata(product: dict, errors: list[str]) -> None:
     immich_photo_frame_docs = read(ROOT / "docs" / "immich-photo-frame.md", errors)
     home_assistant_docs = read(ROOT / "docs" / "home-assistant.md", errors)
     network_yaml = read(ROOT / "common" / "addon" / "network.yaml", errors)
+    device_yaml_path = "devices/guition-esp32-p4-jc8012p4a1/device/device.yaml"
+    device_yaml = read(ROOT / device_yaml_path, errors)
 
     docs_to_check = (
         ("README.md", readme),
@@ -795,6 +811,28 @@ def check_home_assistant_metadata(product: dict, errors: list[str]) -> None:
                     require_contains(home_assistant_docs, value, "docs/home-assistant.md", errors)
             if entity_name:
                 require_contains(network_yaml, f'name: "{entity_name}"', "common/addon/network.yaml", errors)
+    if isinstance(diagnostic_entities, list):
+        for entity in diagnostic_entities:
+            if not isinstance(entity, dict):
+                continue
+            entity_name = str(entity.get("name", "")).strip()
+            entity_type = str(entity.get("type", "")).strip()
+            entity_description = str(entity.get("description", "")).strip()
+            for value in (entity_name, entity_type, entity_description):
+                if value:
+                    require_contains(home_assistant_docs, value, "docs/home-assistant.md", errors)
+            if entity_name:
+                require_contains(device_yaml, f'name: "{entity_name}"', device_yaml_path, errors)
+    if debug_update_interval:
+        require_contains(device_yaml, "debug:", device_yaml_path, errors)
+        require_contains(device_yaml, f"update_interval: {debug_update_interval}", device_yaml_path, errors)
+    for needle in (
+        "text_sensor:",
+        "platform: debug",
+        "reset_reason:",
+        "entity_category: diagnostic",
+    ):
+        require_contains(device_yaml, needle, device_yaml_path, errors)
     if wifi_strength_source:
         require_contains(network_yaml, f'name: "{wifi_strength_source}"', "common/addon/network.yaml", errors)
         require_contains(network_yaml, "source_id: wifi_signal_db", "common/addon/network.yaml", errors)

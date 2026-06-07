@@ -37,6 +37,10 @@
       { "name": "Network: WiFi Strength", "type": "Sensor", "description": "Signal %" },
       { "name": "Network: IP Address", "type": "Text Sensor", "description": "Device IP" }
     ],
+    "home_assistant_diagnostic_entities": [
+      { "name": "Reset Reason", "type": "Text Sensor", "description": "Last reboot reason" }
+    ],
+    "device_debug_update_interval": "60s",
     "network_wifi_strength_source": "Network: WiFi Signal dB",
     "network_wifi_strength_update_interval": "60s",
     "firmware_update_methods": ["OTA", "HTTP"],

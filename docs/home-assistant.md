@@ -48,6 +48,7 @@ Under **Settings → Devices & Services → ESPHome** (device page):
 | **Network: Online** | Binary Sensor | Connection status |
 | **Network: WiFi Strength** | Sensor | Signal % |
 | **Network: IP Address** | Text Sensor | Device IP |
+| **Reset Reason** | Text Sensor | Last reboot reason |
 
 ## Automations
 

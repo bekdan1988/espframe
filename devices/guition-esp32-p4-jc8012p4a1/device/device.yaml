@@ -80,6 +80,7 @@ text_sensor:
   - platform: debug
     reset_reason:
       name: "Reset Reason"
+      entity_category: diagnostic
 
 json:
 
