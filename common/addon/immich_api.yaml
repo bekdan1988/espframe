@@ -227,7 +227,7 @@ script:
               - script.execute: immich_fetch_into_slot
 
   # ---------------------------------------------------------------------------
-  # Fetch a random asset from photo sources using paged metadata search.
+  # Fetch a random asset from Album and Person sources using paged metadata search.
   #
   # Metadata search is stable and supports page/size; the frame first reads the
   # total, then asks for one small random page so large libraries are not limited
@@ -531,10 +531,7 @@ script:
       - lambda: 'id(immich_memory_fallback) = false;'
       - if:
           condition:
-            lambda: |-
-              std::string source = id(photo_source_select).current_option();
-              return source == "All Photos" || source == "Favorites" ||
-                     source == "Album" || source == "Person";
+            lambda: 'return immich_source_uses_metadata_search(id(photo_source_select).current_option());'
           then:
             - script.execute: immich_fetch_metadata_into_slot
             - script.stop: immich_fetch_into_slot

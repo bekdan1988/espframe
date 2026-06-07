@@ -224,6 +224,10 @@ inline uint32_t immich_metadata_page_for_total(uint32_t total,
   return (esp_random() % pages) + 1;
 }
 
+inline bool immich_source_uses_metadata_search(const std::string &photo_source) {
+  return photo_source == "Album" || photo_source == "Person";
+}
+
 inline std::string build_immich_metadata_search_body(uint32_t page,
                                                      uint16_t size,
                                                      bool with_people,
