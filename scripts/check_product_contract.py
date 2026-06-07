@@ -1200,6 +1200,9 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
         errors.append("project.web_server_include_internal must be true or false")
     if not isinstance(project.get("github_pages_cancel_in_progress"), bool):
         errors.append("project.github_pages_cancel_in_progress must be true or false")
+    for field in ("github_release_download_clobber", "github_release_upload_clobber"):
+        if not isinstance(project.get(field), bool):
+            errors.append(f"project.{field} must be true or false")
     if "web_server_factory_js_url" not in project or not isinstance(project.get("web_server_factory_js_url"), str):
         errors.append("project.web_server_factory_js_url must be a string")
     sorting_groups = project.get("web_server_sorting_groups", [])
@@ -2991,6 +2994,8 @@ def check_device_workflow_contract(product: dict, errors: list[str]) -> None:
     uploaded_verify_patterns = [
         str(value).strip() for value in project.get("release_uploaded_verify_patterns", []) if str(value).strip()
     ]
+    release_download_clobber = project.get("github_release_download_clobber")
+    release_upload_clobber = project.get("github_release_upload_clobber")
     release_version_pattern = str(project.get("release_version_pattern", "")).strip()
     stable_release_version_pattern = str(project.get("stable_release_version_pattern", "")).strip()
     firmware_version_placeholder = str(project.get("firmware_version_placeholder_line", "")).rstrip("\n")
@@ -3098,6 +3103,10 @@ def check_device_workflow_contract(product: dict, errors: list[str]) -> None:
         require_contains(docs_workflow, f'--pattern "{pattern}"', ".github/workflows/docs.yml", errors)
     for pattern in uploaded_verify_patterns:
         require_contains(release_workflow, f'--pattern "{pattern}"', ".github/workflows/release.yml", errors)
+    if release_download_clobber is True:
+        require_contains(docs_workflow, "--clobber", ".github/workflows/docs.yml", errors)
+    if release_upload_clobber is True:
+        require_contains(release_workflow, f"{release_publish_dir}/* --clobber", ".github/workflows/release.yml", errors)
     for suffix in asset_suffixes:
         require_contains(release_workflow, suffix, ".github/workflows/release.yml", errors)
         if suffix == ".manifest.json":
