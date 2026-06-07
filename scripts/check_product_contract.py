@@ -258,6 +258,10 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
         "firmware_manual_check_behavior",
         "firmware_beta_check_requirement",
         "firmware_custom_manifest_requirement",
+        "ota_update_platform",
+        "ota_pre_update_action",
+        "ota_pre_update_transition",
+        "ota_pre_update_delay",
         "backup_filename_prefix",
         "backup_filename_date_format",
         "backup_import_write_behavior",
@@ -892,6 +896,36 @@ def check_firmware_update_metadata(product: dict, errors: list[str]) -> None:
         require_contains(firmware_yaml, url, "common/addon/firmware_update.yaml", errors)
         require_contains(web_text, url, rel(WEB_APP), errors)
         require_contains(web_template, f"FIRMWARE_MANIFEST_URLS.{label}", rel(WEB_TEMPLATE), errors)
+
+
+def check_ota_update_metadata(product: dict, errors: list[str]) -> None:
+    project = product["project"]
+    platform = str(project.get("ota_update_platform", "")).strip()
+    pre_update_action = str(project.get("ota_pre_update_action", "")).strip()
+    transition = str(project.get("ota_pre_update_transition", "")).strip()
+    delay = str(project.get("ota_pre_update_delay", "")).strip()
+
+    firmware_docs = read(ROOT / "docs" / "firmware-update.md", errors)
+    device_yaml_path = "devices/guition-esp32-p4-jc8012p4a1/device/device.yaml"
+    device_yaml = read(ROOT / device_yaml_path, errors)
+
+    if pre_update_action:
+        require_contains(firmware_docs, pre_update_action, "docs/firmware-update.md", errors)
+    if transition:
+        require_contains(firmware_docs, transition, "docs/firmware-update.md", errors)
+        require_contains(device_yaml, f"transition_length: {transition}", device_yaml_path, errors)
+    if delay:
+        require_contains(firmware_docs, delay, "docs/firmware-update.md", errors)
+        require_contains(device_yaml, f"delay: {delay}", device_yaml_path, errors)
+    if platform:
+        require_contains(device_yaml, f"platform: {platform}", device_yaml_path, errors)
+    for needle in (
+        "ota:",
+        "on_begin:",
+        "light.turn_off:",
+        "id: backlight",
+    ):
+        require_contains(device_yaml, needle, device_yaml_path, errors)
 
 
 def check_backup_metadata(product: dict, errors: list[str]) -> None:
@@ -2903,6 +2937,7 @@ def main() -> int:
     check_immich_connection_metadata(product, errors)
     check_home_assistant_metadata(product, errors)
     check_firmware_update_metadata(product, errors)
+    check_ota_update_metadata(product, errors)
     check_backup_metadata(product, errors)
     check_privacy_metadata(product, errors)
     check_touch_controls_metadata(product, errors)
