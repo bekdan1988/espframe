@@ -124,6 +124,13 @@ static void test_date_and_url_helpers() {
   assert(format_photo_date_full(2026, 4, 21) == "21 April, 2026");
   assert(format_photo_date_full(2026, 1, 1) == "1 January, 2026");
   assert(format_photo_date_month_day_year(2026, 1, 1) == "January 1, 2026");
+  int shifted_year = 0;
+  int shifted_month = 0;
+  int shifted_day = 0;
+  civil_from_days(days_from_civil(2026, 3, 1) - 2, shifted_year, shifted_month, shifted_day);
+  assert(shifted_year == 2026);
+  assert(shifted_month == 2);
+  assert(shifted_day == 27);
 }
 
 static void test_duration_helpers() {
@@ -142,6 +149,16 @@ static void test_immich_body_helpers() {
       true, "Relative Range", 1, "Months", true, 2026, 3, 31, "", "");
   assert(range.from == "2026-02-28");
   assert(range.to == "2026-03-31");
+  assert(immich_format_iso_date_offset(2026, 1, 1, -2) == "2025-12-30");
+  assert(immich_format_iso_date_offset(2026, 12, 31, 2) == "2027-01-02");
+  std::string csv;
+  append_csv_value(csv, "a");
+  append_csv_value(csv, "b");
+  append_csv_value(csv, "c");
+  assert(csv == "a,b,c");
+  assert(csv_value_at(csv, 0) == "a");
+  assert(csv_value_at(csv, 2) == "c");
+  assert(csv_value_at(csv, 3).empty());
   assert(!range.relative_skipped_for_invalid_time);
   assert(build_immich_date_filter_extra(range) ==
          "\"takenAfter\":\"2026-02-28T00:00:00.000Z\","

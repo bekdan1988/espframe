@@ -70,6 +70,34 @@ inline std::string immich_format_iso_date(int year, int month, int day) {
   return std::string(buf);
 }
 
+inline std::string immich_format_iso_date_offset(int year, int month, int day, int offset_days) {
+  int shifted_year = 0;
+  int shifted_month = 0;
+  int shifted_day = 0;
+  civil_from_days(days_from_civil(year, month, day) + offset_days,
+                  shifted_year, shifted_month, shifted_day);
+  return immich_format_iso_date(shifted_year, shifted_month, shifted_day);
+}
+
+inline void append_csv_value(std::string &csv, const std::string &value) {
+  if (value.empty()) return;
+  if (!csv.empty()) csv += ",";
+  csv += value;
+}
+
+inline std::string csv_value_at(const std::string &csv, int index) {
+  if (index < 0) return "";
+  size_t start = 0;
+  for (int i = 0; i < index; i++) {
+    start = csv.find(',', start);
+    if (start == std::string::npos) return "";
+    start++;
+  }
+  size_t end = csv.find(',', start);
+  if (end == std::string::npos) end = csv.size();
+  return csv.substr(start, end - start);
+}
+
 inline ImmichDateRange resolve_immich_date_filter(bool enabled,
                                                   const std::string &mode,
                                                   int amount,

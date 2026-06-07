@@ -225,6 +225,19 @@ inline int days_from_civil(int year, int month, int day) {
   return era * 146097 + static_cast<int>(doe) - 719468;
 }
 
+inline void civil_from_days(int days, int &year, int &month, int &day) {
+  days += 719468;
+  const int era = (days >= 0 ? days : days - 146096) / 146097;
+  const unsigned doe = static_cast<unsigned>(days - era * 146097);
+  const unsigned yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  year = static_cast<int>(yoe) + era * 400;
+  const unsigned doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+  const unsigned mp = (5 * doy + 2) / 153;
+  day = static_cast<int>(doy - (153 * mp + 2) / 5 + 1);
+  month = static_cast<int>(mp + (mp < 10 ? 3 : -9));
+  year += month <= 2;
+}
+
 inline std::string plural_time_ago(int value, const char *unit) {
   if (value == 1) return std::string("1 ") + unit + " ago";
   return std::to_string(value) + " " + unit + "s ago";

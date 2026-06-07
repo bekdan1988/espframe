@@ -49,7 +49,7 @@ Saving multiple IDs uses an HTTP POST body for the value, so the request stays w
 
 ## Memories
 
-Shows "On this day" photos from past years; falls back to random if none. Set **Source** to **Memories**. No IDs needed. API key needs **memory.read**. Set **Timezone** (Clock) correctly so "today" matches.
+Shows "On this day" photos from past years, including two days before and two days after today's date; falls back to random if none. Set **Source** to **Memories**. No IDs needed. API key needs **memory.read**. Set **Timezone** (Clock) correctly so "today" matches.
 
 ---
 

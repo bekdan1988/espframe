@@ -18,6 +18,15 @@ globals:
   - id: immich_memory_asset_id
     type: std::string
     initial_value: '""'
+  - id: immich_memory_window_offset
+    type: int
+    initial_value: '-2'
+  - id: immich_memory_image_ids
+    type: std::string
+    initial_value: '""'
+  - id: immich_memory_image_count
+    type: int
+    initial_value: '0'
   - id: immich_metadata_album_id
     type: std::string
     initial_value: '""'
@@ -63,7 +72,7 @@ script:
           id(espframe_slideshow_dispatch).execute();
 
   # ---------------------------------------------------------------------------
-  # Fetch a memory ("on this day") — step 1: pick a random asset from memories
+  # Fetch memories ("on this day") — step 1: collect assets from today +/- 2 days
   # ---------------------------------------------------------------------------
   - id: immich_fetch_memory_into_slot
     mode: single
@@ -83,13 +92,22 @@ script:
             lambda: 'return id(immich_url).state.empty() || id(immich_api_key_text).state.empty();'
           then:
             - script.stop: immich_fetch_memory_into_slot
+      - lambda: |-
+          id(immich_memory_window_offset) = -2;
+          id(immich_memory_image_ids) = "";
+          id(immich_memory_image_count) = 0;
+      - script.execute: immich_fetch_memory_window_day
+
+  - id: immich_fetch_memory_window_day
+    mode: queued
+    then:
       - http_request.get:
           id: http_req
           url: !lambda |-
             auto now = id(sntp_time).now();
-            char buf[32];
-            snprintf(buf, sizeof(buf), "%04d-%02d-%02dT00:00:00.000Z", now.year, now.month, now.day_of_month);
-            return id(immich_url).state + "/api/memories?type=on_this_day&for=" + std::string(buf);
+            std::string day = immich_format_iso_date_offset(
+              now.year, now.month, now.day_of_month, id(immich_memory_window_offset));
+            return id(immich_url).state + "/api/memories?type=on_this_day&for=" + day + "T00:00:00.000Z";
           capture_response: true
           max_response_buffer_size: 192kB
           request_headers:
@@ -99,24 +117,18 @@ script:
             then:
               - lambda: |-
                   if (response->status_code != 200) {
-                    ESP_LOGW("immich", "Memories HTTP %d — falling back to random", response->status_code);
-                    id(immich_memory_fallback) = true;
-                    clear_slot_fetch_in_flight(id(target_slot), id(slot_flags));
-                    id(immich_fetch_into_slot).execute();
+                    ESP_LOGW("immich", "Memories HTTP %d for offset %+d", response->status_code,
+                             id(immich_memory_window_offset));
                     return;
                   }
 
                   auto doc = json::parse_json(body);
                   if (doc.isNull() || !doc.is<JsonArray>()) {
-                    ESP_LOGD("immich", "No memories for today — falling back to random");
-                    id(immich_memory_fallback) = true;
-                    clear_slot_fetch_in_flight(id(target_slot), id(slot_flags));
-                    id(immich_fetch_into_slot).execute();
+                    ESP_LOGD("immich", "No memories for offset %+d", id(immich_memory_window_offset));
                     return;
                   }
 
                   JsonArray memories = doc.as<JsonArray>();
-                  std::vector<std::string> image_ids;
                   for (size_t m = 0; m < memories.size(); m++) {
                     JsonObject mem = memories[m].as<JsonObject>();
                     if (mem.isNull() || !mem["assets"].is<JsonArray>()) continue;
@@ -128,30 +140,49 @@ script:
                         std::string type = asset["type"].as<std::string>();
                         if (type != "IMAGE") continue;
                       }
-                      image_ids.push_back(asset["id"].as<std::string>());
+                      append_csv_value(id(immich_memory_image_ids), asset["id"].as<std::string>());
+                      id(immich_memory_image_count)++;
                     }
                   }
+              - lambda: |-
+                  id(immich_memory_window_offset)++;
+                  if (id(immich_memory_window_offset) <= 2) {
+                    id(immich_fetch_memory_window_day).execute();
+                    return;
+                  }
 
-                  if (image_ids.empty()) {
-                    ESP_LOGD("immich", "No memory images for today — falling back to random");
+                  if (id(immich_memory_image_count) <= 0) {
+                    ESP_LOGD("immich", "No memory images in today +/- 2 days — falling back to random");
                     id(immich_memory_fallback) = true;
                     clear_slot_fetch_in_flight(id(target_slot), id(slot_flags));
                     id(immich_fetch_into_slot).execute();
                     return;
                   }
 
-                  int pick = rand() % image_ids.size();
-                  id(immich_memory_asset_id) = image_ids[pick];
-                  ESP_LOGD("immich", "Memory picked: %s (%d of %d)",
-                           id(immich_memory_asset_id).c_str(), pick + 1, (int)image_ids.size());
+                  int pick = rand() % id(immich_memory_image_count);
+                  id(immich_memory_asset_id) = csv_value_at(id(immich_memory_image_ids), pick);
+                  ESP_LOGD("immich", "Memory picked: %s (%d of %d across today +/- 2 days)",
+                           id(immich_memory_asset_id).c_str(), pick + 1, id(immich_memory_image_count));
                   id(immich_fetch_memory_asset).execute();
           on_error:
             then:
               - lambda: |-
-                  ESP_LOGW("immich", "Memories request failed — falling back to random");
-                  id(immich_memory_fallback) = true;
-                  clear_slot_fetch_in_flight(id(target_slot), id(slot_flags));
-              - script.execute: immich_fetch_into_slot
+                  ESP_LOGW("immich", "Memories request failed for offset %+d", id(immich_memory_window_offset));
+                  id(immich_memory_window_offset)++;
+                  if (id(immich_memory_window_offset) <= 2) {
+                    id(immich_fetch_memory_window_day).execute();
+                    return;
+                  }
+                  if (id(immich_memory_image_count) <= 0) {
+                    ESP_LOGW("immich", "Memories window request failed — falling back to random");
+                    id(immich_memory_fallback) = true;
+                    clear_slot_fetch_in_flight(id(target_slot), id(slot_flags));
+                    id(immich_fetch_into_slot).execute();
+                    return;
+                  }
+                  int pick = rand() % id(immich_memory_image_count);
+                  id(immich_memory_asset_id) = csv_value_at(id(immich_memory_image_ids), pick);
+                  id(immich_fetch_memory_asset).execute();
 
   # ---------------------------------------------------------------------------
   # Fetch full asset details for a memory photo — step 2
