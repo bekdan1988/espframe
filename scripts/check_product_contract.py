@@ -125,6 +125,17 @@ def check_path_list(setting: dict, key: str, field: str, errors: list[str]) -> l
     return result
 
 
+def check_relative_path(value: object, label: str, errors: list[str]) -> str:
+    path = str(value or "").strip()
+    if not path:
+        errors.append(f"{label} is required")
+        return ""
+    if Path(path).is_absolute() or ".." in Path(path).parts:
+        errors.append(f"{label} has unsafe path: {path}")
+        return ""
+    return path
+
+
 def check_setting_schema(setting: dict, errors: list[str]) -> None:
     key = str(setting.get("key", "")).strip()
     entity = setting.get("entity") or {}
@@ -194,12 +205,23 @@ def check_devices(product: dict, errors: list[str]) -> None:
             errors.append(f"Duplicate product device slug: {slug}")
         seen.add(slug)
 
-        for field in ("name", "chip", "build_yaml", "public_manifest", "public_beta_manifest"):
+        for field in (
+            "name",
+            "chip",
+            "build_yaml",
+            "package_yaml",
+            "local_yaml",
+            "device_yaml",
+            "public_manifest",
+            "public_beta_manifest",
+        ):
             if not str(device.get(field, "")).strip():
                 errors.append(f"Device {slug} is missing {field}")
 
-        build_yaml = ROOT / str(device.get("build_yaml", ""))
-        read(build_yaml, errors)
+        for field in ("build_yaml", "package_yaml", "local_yaml", "device_yaml"):
+            path = check_relative_path(device.get(field), f"Device {slug} {field}", errors)
+            if path:
+                read(ROOT / path, errors)
 
 
 def check_project_metadata(product: dict, errors: list[str]) -> None:
@@ -247,7 +269,6 @@ def check_public_manifest_urls(product: dict, errors: list[str]) -> None:
 
     default_urls = default_public_manifest_urls(product)
     firmware_update = read(ROOT / "common" / "addon" / "firmware_update.yaml", errors)
-    packages = read(ROOT / "devices" / "guition-esp32-p4-jc8012p4a1" / "packages.yaml", errors)
     backup_docs = read(ROOT / "docs" / "backup.md", errors)
     docs_workflow = read(ROOT / ".github" / "workflows" / "docs.yml", errors)
     for label, url in default_urls.items():
@@ -255,11 +276,20 @@ def check_public_manifest_urls(product: dict, errors: list[str]) -> None:
             errors.append(f"Default {label} firmware manifest URL must be an https URL")
         for filename, text in (
             ("common/addon/firmware_update.yaml", firmware_update),
-            ("devices/guition-esp32-p4-jc8012p4a1/packages.yaml", packages),
             ("docs/backup.md", backup_docs),
         ):
             require_contains(text, url, filename, errors)
     require_contains(docs_workflow, f'--base-url "{base_url}"', ".github/workflows/docs.yml", errors)
+
+    urls_by_slug = device_public_manifest_urls(product)
+    for device in product["devices"]:
+        slug = str(device.get("slug", "")).strip()
+        package_yaml = check_relative_path(device.get("package_yaml"), f"Device {slug} package_yaml", errors)
+        if not package_yaml:
+            continue
+        package_text = read(ROOT / package_yaml, errors)
+        for url in urls_by_slug.get(slug, {}).values():
+            require_contains(package_text, url, package_yaml, errors)
 
 
 def check_public_site_references(product: dict, errors: list[str]) -> None:
@@ -270,8 +300,6 @@ def check_public_site_references(product: dict, errors: list[str]) -> None:
     project_name = str(product["project"].get("name", "")).strip()
     repository_url = str(product["project"].get("repository_url", "")).strip().rstrip("/")
 
-    esphome_yaml = read(ROOT / "devices" / "guition-esp32-p4-jc8012p4a1" / "esphome.yaml", errors)
-    device_yaml = read(ROOT / "devices" / "guition-esp32-p4-jc8012p4a1" / "device" / "device.yaml", errors)
     robots = read(ROOT / "docs" / "public" / "robots.txt", errors)
     ai_txt = read(ROOT / "docs" / "public" / "ai.txt", errors)
     readme = read(ROOT / "README.md", errors)
@@ -280,15 +308,12 @@ def check_public_site_references(product: dict, errors: list[str]) -> None:
     roadmap = read(ROOT / "docs" / "roadmap.md", errors)
     release_changelog = read(ROOT / "scripts" / "release_changelog.py", errors)
 
-    require_contains(device_yaml, f'js_url: "{web_app_url}"', "devices/guition-esp32-p4-jc8012p4a1/device/device.yaml", errors)
     require_contains(robots, f"Sitemap: {public_url('sitemap.xml', product)}", "docs/public/robots.txt", errors)
 
     if project_name:
         require_contains(ai_txt, f"name: {project_name}", "docs/public/ai.txt", errors)
         require_contains(ai_txt, f'attribute to "{project_name}"', "docs/public/ai.txt", errors)
     if repository_url:
-        require_contains(esphome_yaml, f"url: {repository_url}", "devices/guition-esp32-p4-jc8012p4a1/esphome.yaml", errors)
-        require_contains(device_yaml, f'espframe_component_url: "{repository_url}"', "devices/guition-esp32-p4-jc8012p4a1/device/device.yaml", errors)
         require_contains(ai_txt, f"Source and issues: {repository_url}", "docs/public/ai.txt", errors)
         require_contains(manual_setup, f"url: {repository_url}", "docs/manual-setup.md", errors)
         require_contains(license_docs, f"({repository_url}/blob/main/LICENSE)", "docs/license.md", errors)
@@ -300,6 +325,18 @@ def check_public_site_references(product: dict, errors: list[str]) -> None:
     require_contains(readme, f"]({install_url})", "README.md installer link", errors)
     require_contains(readme, f"]({docs_url})", "README.md docs link", errors)
     require_contains(readme, base_url, "README.md public base URL", errors)
+
+    for device in product["devices"]:
+        slug = str(device.get("slug", "")).strip()
+        local_yaml = check_relative_path(device.get("local_yaml"), f"Device {slug} local_yaml", errors)
+        device_yaml = check_relative_path(device.get("device_yaml"), f"Device {slug} device_yaml", errors)
+        if local_yaml and repository_url:
+            require_contains(read(ROOT / local_yaml, errors), f"url: {repository_url}", local_yaml, errors)
+        if device_yaml:
+            device_text = read(ROOT / device_yaml, errors)
+            require_contains(device_text, f'js_url: "{web_app_url}"', device_yaml, errors)
+            if repository_url:
+                require_contains(device_text, f'espframe_component_url: "{repository_url}"', device_yaml, errors)
 
 
 def check_device_workflow_contract(product: dict, errors: list[str]) -> None:
