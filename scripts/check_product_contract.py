@@ -369,6 +369,28 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
         if not str(project.get(field, "")).strip():
             errors.append(f"project.{field} is required")
     for field in (
+        "screen_rotation_feature_source",
+        "screen_rotation_behavior",
+        "screen_rotation_developer_behavior",
+    ):
+        if not str(project.get(field, "")).strip():
+            errors.append(f"project.{field} is required")
+    for field in ("screen_rotation_user_options", "screen_rotation_developer_options"):
+        values = project.get(field, [])
+        if not isinstance(values, list) or not values:
+            errors.append(f"project.{field} must be a non-empty list")
+        elif any(not isinstance(value, str) or not value.strip() for value in values):
+            errors.append(f"project.{field} must only contain non-empty strings")
+    screen_rotation_mapping = project.get("screen_rotation_native_mapping", {})
+    if not isinstance(screen_rotation_mapping, dict) or not screen_rotation_mapping:
+        errors.append("project.screen_rotation_native_mapping must be a non-empty object")
+    else:
+        for user_option, native_option in screen_rotation_mapping.items():
+            if not isinstance(user_option, str) or not user_option.strip():
+                errors.append("project.screen_rotation_native_mapping keys must be non-empty strings")
+            if not isinstance(native_option, str) or not native_option.strip():
+                errors.append(f"project.screen_rotation_native_mapping.{user_option} must be a non-empty string")
+    for field in (
         "screen_tone_base_purpose",
         "screen_tone_night_timing",
         "screen_tone_night_recovery",
@@ -861,6 +883,90 @@ def check_screen_schedule_metadata(product: dict, errors: list[str]) -> None:
         require_contains(backlight_schedule_yaml, needle, "common/addon/backlight_schedule.yaml", errors)
     for key in ("schedule_enabled", "schedule_on_hour", "schedule_off_hour", "schedule_wake_timeout"):
         require_contains(web_template, key, rel(WEB_TEMPLATE), errors)
+
+
+def check_screen_rotation_metadata(product: dict, errors: list[str]) -> None:
+    project = product["project"]
+    user_options = [str(value).strip() for value in project.get("screen_rotation_user_options", []) if str(value).strip()]
+    developer_options = [
+        str(value).strip() for value in project.get("screen_rotation_developer_options", []) if str(value).strip()
+    ]
+    native_mapping = project.get("screen_rotation_native_mapping", {})
+    feature_source = str(project.get("screen_rotation_feature_source", "")).strip()
+    rotation_behavior = str(project.get("screen_rotation_behavior", "")).strip()
+    developer_behavior = str(project.get("screen_rotation_developer_behavior", "")).strip()
+
+    settings_by_key = {str(setting.get("key", "")).strip(): setting for setting in product["settings"]}
+    rotation_setting = settings_by_key.get("screen_rotation")
+    if not rotation_setting:
+        errors.append("product settings must include screen_rotation")
+    else:
+        if user_options and rotation_setting.get("options") != user_options:
+            errors.append("project.screen_rotation_user_options must match screen_rotation options")
+        if developer_options and rotation_setting.get("developer_options") != developer_options:
+            errors.append("project.screen_rotation_developer_options must match screen_rotation developer_options")
+
+    screen_docs = read(ROOT / "docs" / "screen-settings.md", errors)
+    backup_docs = read(ROOT / "docs" / "backup.md", errors)
+    rotation_yaml = read(ROOT / "common" / "addon" / "screen_rotation.yaml", errors)
+    developer_yaml = read(ROOT / "common" / "addon" / "developer_features.yaml", errors)
+    web_template = read(WEB_TEMPLATE, errors)
+
+    if feature_source:
+        require_contains(screen_docs, feature_source, "docs/screen-settings.md", errors)
+    if rotation_behavior:
+        require_contains(screen_docs, rotation_behavior, "docs/screen-settings.md", errors)
+    if developer_behavior:
+        require_contains(screen_docs, developer_behavior, "docs/screen-settings.md", errors)
+        require_contains(web_template, "S.developer_features_enabled", rel(WEB_TEMPLATE), errors)
+    for option in user_options + developer_options:
+        require_contains(rotation_yaml, f'      - "{option}"', "common/addon/screen_rotation.yaml", errors)
+        require_contains(web_template, option, rel(WEB_TEMPLATE), errors)
+    for option in user_options:
+        require_contains(screen_docs, f"{option}", "docs/screen-settings.md", errors)
+    for option in developer_options:
+        require_contains(screen_docs, option, "docs/screen-settings.md", errors)
+    if isinstance(native_mapping, dict):
+        for user_option, native_option in native_mapping.items():
+            if not isinstance(user_option, str) or not isinstance(native_option, str):
+                continue
+            marker = f'screen_rotation_{user_option}: "{native_option}"'
+            for device in product["devices"]:
+                package_yaml = str(device.get("package_yaml", "")).strip()
+                if package_yaml:
+                    require_contains(read(ROOT / package_yaml, errors), marker, package_yaml, errors)
+            require_contains(rotation_yaml, f"${{screen_rotation_{user_option}}}", "common/addon/screen_rotation.yaml", errors)
+    for needle in (
+        "Screen: Rotation",
+        'initial_option: "${screen_rotation}"',
+        "screen_apply_rotation",
+        "developer_features_enabled",
+        "lvgl.display.set_rotation",
+        "portrait_pairing_enabled",
+        "immich_reapply_current_image_layout",
+    ):
+        require_contains(rotation_yaml, needle, "common/addon/screen_rotation.yaml", errors)
+    for needle in (
+        "Developer: Features",
+        "RESTORE_DEFAULT_OFF",
+        "developer_features_saved",
+        "script.execute: screen_apply_rotation",
+    ):
+        require_contains(developer_yaml, needle, "common/addon/developer_features.yaml", errors)
+    for needle in (
+        "developerPanelEnabledByUrl",
+        'params.get("developer")',
+        'params.get("dev")',
+        "experimental",
+        "screenRotationOptionsForUi",
+        "productSettingOptions(\"screen_rotation\", S.developer_features_enabled)",
+        "isPortraitScreenRotation",
+        "Enable in-development features",
+        'post(endpoints.screen_rotation + "/set"',
+    ):
+        require_contains(web_template, needle, rel(WEB_TEMPLATE), errors)
+    for needle in ("Rotation", "0 degrees"):
+        require_contains(backup_docs + screen_docs, needle, "screen rotation docs", errors)
 
 
 def check_screen_tone_metadata(product: dict, errors: list[str]) -> None:
@@ -2176,6 +2282,7 @@ def main() -> int:
     check_privacy_metadata(product, errors)
     check_touch_controls_metadata(product, errors)
     check_screen_schedule_metadata(product, errors)
+    check_screen_rotation_metadata(product, errors)
     check_screen_tone_metadata(product, errors)
     check_clock_time_metadata(product, errors)
     check_photo_source_metadata(product, errors)

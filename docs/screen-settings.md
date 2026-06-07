@@ -39,6 +39,8 @@ In Home Assistant, **Screen: Sleep** and **Screen: Wake** expose the same sleep/
 
 The setting only exposes normal and upside-down orientations. On the 10" model, the firmware keeps its internal 90-degree panel offset and maps these two choices onto the correct LVGL values.
 
+90 and 270 degree rotations are hidden unless Developer Features is enabled. Turning Developer Features off resets portrait rotation back to 0 degrees.
+
 <!-- ESPFRAME:SETTINGS_TABLE screen_rotation START -->
 | Setting | Default | Description |
 |---------|---------|-------------|
