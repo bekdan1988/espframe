@@ -187,6 +187,8 @@ def check_setting_schema(setting: dict, errors: list[str]) -> None:
             errors.append(f"Select setting {key} must define non-empty options")
         elif any(not isinstance(option, str) or not option for option in options):
             errors.append(f"Select setting {key} options must be non-empty strings")
+        elif len(options) != len(set(options)):
+            errors.append(f"Select setting {key} options must not contain duplicates")
         elif raw_default and raw_default not in options and not str(setting.get("firmware_initial_option", "")).startswith("${"):
             errors.append(f"Select setting {key} default is not in options")
 
@@ -195,6 +197,8 @@ def check_setting_schema(setting: dict, errors: list[str]) -> None:
                 errors.append(f"Select setting {key} developer_options must be a list")
             elif any(not isinstance(option, str) or not option for option in developer_options):
                 errors.append(f"Select setting {key} developer_options must be non-empty strings")
+            elif len(developer_options) != len(set(developer_options)):
+                errors.append(f"Select setting {key} developer_options must not contain duplicates")
             elif set(developer_options).intersection(options):
                 errors.append(f"Select setting {key} developer_options must not duplicate normal options")
     elif domain == "number":
