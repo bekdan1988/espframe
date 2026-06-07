@@ -15,6 +15,8 @@ from pathlib import Path
 
 from product_config import (
     DOCS_SETTINGS_TABLES,
+    WEB_ENTITY_ALIASES,
+    WEB_STATIC_ENTITIES,
     load_product,
     web_entity_aliases_metadata,
     web_initial_fetch_keys,
@@ -55,6 +57,13 @@ def extract_js_json_var(text: str, var_name: str, errors: list[str]) -> object |
     except json.JSONDecodeError as exc:
         errors.append(f"Generated web app {var_name} is not valid JSON: {exc}")
         return None
+
+
+def valid_entity_string(value: object) -> bool:
+    if not isinstance(value, str) or "/" not in value:
+        return False
+    domain, name = value.split("/", 1)
+    return bool(domain.strip() and name.strip())
 
 
 def firmware_entity_block(text: str, name: str, filename: str, errors: list[str]) -> str:
@@ -212,6 +221,65 @@ def check_workflows(errors: list[str]) -> None:
         require_contains(text, "product/espframe.json", label, errors)
 
 
+def check_web_entity_metadata(product: dict, errors: list[str]) -> None:
+    product_keys = {str(setting.get("key", "")).strip() for setting in product["settings"]}
+    product_entities = {
+        f'{setting.get("entity", {}).get("domain", "")}/{setting.get("entity", {}).get("name", "")}'
+        for setting in product["settings"]
+    }
+    static_entities_seen: set[str] = set()
+
+    for key, metadata in WEB_STATIC_ENTITIES.items():
+        if not isinstance(key, str) or not key.strip():
+            errors.append("Static web entity keys must be non-empty strings")
+        if key in product_keys:
+            errors.append(f"Static web entity {key} duplicates a product setting key")
+        if not isinstance(metadata, dict):
+            errors.append(f"Static web entity {key} metadata must be an object")
+            continue
+        entity = metadata.get("entity")
+        if not valid_entity_string(entity):
+            errors.append(f"Static web entity {key} has invalid entity {entity!r}")
+        elif entity in static_entities_seen:
+            errors.append(f"Duplicate static web entity: {entity}")
+        else:
+            static_entities_seen.add(str(entity))
+        if entity in product_entities:
+            errors.append(f"Static web entity {key} duplicates product entity {entity}")
+        for field in ("fetch", "boolFromState", "number"):
+            if field in metadata and not isinstance(metadata[field], bool):
+                errors.append(f"Static web entity {key} {field} must be true or false")
+        if "optionsKey" in metadata and not str(metadata["optionsKey"]).strip():
+            errors.append(f"Static web entity {key} optionsKey must be non-empty")
+
+    alias_entities_seen: set[str] = set()
+    valid_state_keys = product_keys | set(WEB_STATIC_ENTITIES)
+    for key, aliases in WEB_ENTITY_ALIASES.items():
+        if key not in valid_state_keys:
+            errors.append(f"Web entity alias {key} does not point at a known state key")
+        if not isinstance(aliases, list) or not aliases:
+            errors.append(f"Web entity alias {key} must define at least one alias")
+            continue
+        for alias in aliases:
+            if not isinstance(alias, dict):
+                errors.append(f"Web entity alias {key} entries must be objects")
+                continue
+            entity = alias.get("entity")
+            if not valid_entity_string(entity):
+                errors.append(f"Web entity alias {key} has invalid entity {entity!r}")
+            elif entity in alias_entities_seen:
+                errors.append(f"Duplicate web entity alias: {entity}")
+            else:
+                alias_entities_seen.add(str(entity))
+            if entity in product_entities or entity in static_entities_seen:
+                errors.append(f"Web entity alias {key} duplicates canonical entity {entity}")
+            for field in ("boolFromState", "number"):
+                if field in alias and not isinstance(alias[field], bool):
+                    errors.append(f"Web entity alias {key} {field} must be true or false")
+            if "optionsKey" in alias and not str(alias["optionsKey"]).strip():
+                errors.append(f"Web entity alias {key} optionsKey must be non-empty")
+
+
 def check_generated_web_metadata(product: dict, web_text: str, errors: list[str]) -> None:
     product_settings = extract_js_json_var(web_text, "PRODUCT_SETTINGS", errors)
     if product_settings is not None and product_settings != web_settings_metadata(product["settings"]):
@@ -360,6 +428,7 @@ def check_setting(setting: dict, web_text: str, errors: list[str]) -> None:
 def check_settings(product: dict, errors: list[str]) -> None:
     web_template = read(WEB_TEMPLATE, errors)
     web_text = read(WEB_APP, errors)
+    check_web_entity_metadata(product, errors)
     check_generated_web_metadata(product, web_text, errors)
     check_docs_table_membership(product, errors)
     check_docs_table_markers(errors)
