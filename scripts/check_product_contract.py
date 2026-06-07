@@ -412,6 +412,26 @@ def check_public_site_references(product: dict, errors: list[str]) -> None:
                 require_contains(device_text, f'espframe_component_url: "{repository_url}"', device_yaml, errors)
 
 
+def check_docs_site_config(product: dict, errors: list[str]) -> None:
+    config = read(ROOT / "docs" / ".vitepress" / "config.mts", errors)
+    project = product["project"]
+    project_name = str(project.get("name", "")).strip()
+    base_url = public_base_url(product)
+    docs_url = public_url("", product)
+    base_path = f"/{base_url.rstrip('/').rsplit('/', 1)[-1]}/"
+    repository_url = str(project.get("repository_url", "")).strip().rstrip("/")
+
+    if project_name:
+        require_contains(config, f"title: '{project_name}'", "docs/.vitepress/config.mts", errors)
+        require_contains(config, f"content: '{project_name}'", "docs/.vitepress/config.mts", errors)
+        require_contains(config, f"name: '{project_name}'", "docs/.vitepress/config.mts", errors)
+    require_contains(config, f"const hostname = '{docs_url}'", "docs/.vitepress/config.mts", errors)
+    require_contains(config, f"base: '{base_path}'", "docs/.vitepress/config.mts", errors)
+    if repository_url:
+        require_contains(config, f"link: '{repository_url}'", "docs/.vitepress/config.mts", errors)
+        require_contains(config, f"pattern: '{repository_url}/edit/main/docs/:path'", "docs/.vitepress/config.mts", errors)
+
+
 def check_device_workflow_contract(product: dict, errors: list[str]) -> None:
     release_workflow = read(ROOT / ".github" / "workflows" / "release.yml", errors)
     docs_workflow = read(ROOT / ".github" / "workflows" / "docs.yml", errors)
@@ -941,6 +961,7 @@ def main() -> int:
     check_devices(product, errors)
     check_public_manifest_urls(product, errors)
     check_public_site_references(product, errors)
+    check_docs_site_config(product, errors)
     check_device_workflow_contract(product, errors)
     check_esphome_version(product, errors)
     check_workflows(errors)
