@@ -3577,6 +3577,20 @@ def check_generated_asset_metadata(product: dict, errors: list[str]) -> None:
                 require_contains(generator, "load_product", "scripts/generate_assets.py", errors)
             else:
                 require_contains(generator, path_name, "scripts/generate_assets.py", errors)
+    template_placeholders = set(re.findall(r"__ESPFRAME_[A-Z0-9_]+__", web_template))
+    configured_placeholders = set(placeholders)
+    missing_placeholders = sorted(template_placeholders - configured_placeholders)
+    extra_placeholders = sorted(configured_placeholders - template_placeholders)
+    if missing_placeholders:
+        errors.append(
+            "project.web_template_placeholders is missing template placeholders: "
+            + ", ".join(missing_placeholders)
+        )
+    if extra_placeholders:
+        errors.append(
+            "project.web_template_placeholders lists placeholders not used by the web template: "
+            + ", ".join(extra_placeholders)
+        )
     for placeholder in placeholders:
         require_contains(web_template, placeholder, rel(WEB_TEMPLATE), errors)
         require_contains(generator, placeholder, "scripts/generate_assets.py", errors)
