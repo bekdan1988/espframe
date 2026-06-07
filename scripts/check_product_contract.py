@@ -4044,6 +4044,7 @@ def check_web_entity_metadata(product: dict, errors: list[str]) -> None:
     static_entities = web_static_entities(product)
     static_entities_seen: set[str] = set()
     state_domains = dict(product_key_domains)
+    local_state_keys = web_local_state_keys(product)
 
     if not static_entities:
         errors.append("project.web_static_entities must be a non-empty object")
@@ -4079,8 +4080,12 @@ def check_web_entity_metadata(product: dict, errors: list[str]) -> None:
         for field in ("fetch", "boolFromState", "number"):
             if field in metadata and not isinstance(metadata[field], bool):
                 errors.append(f"Static web entity {key} {field} must be true or false")
-        if "optionsKey" in metadata and not str(metadata["optionsKey"]).strip():
-            errors.append(f"Static web entity {key} optionsKey must be non-empty")
+        if "optionsKey" in metadata:
+            options_key = str(metadata["optionsKey"]).strip()
+            if not options_key:
+                errors.append(f"Static web entity {key} optionsKey must be non-empty")
+            elif options_key not in local_state_keys:
+                errors.append(f"Static web entity {key} optionsKey must point at a project.web_local_state_keys entry")
         firmware_file = str(metadata.get("firmware_file", "")).strip()
         if not firmware_file:
             errors.append(f"Static web entity {key} is missing firmware_file")
@@ -4135,8 +4140,12 @@ def check_web_entity_metadata(product: dict, errors: list[str]) -> None:
             for field in ("boolFromState", "number"):
                 if field in alias and not isinstance(alias[field], bool):
                     errors.append(f"Web entity alias {key} {field} must be true or false")
-            if "optionsKey" in alias and not str(alias["optionsKey"]).strip():
-                errors.append(f"Web entity alias {key} optionsKey must be non-empty")
+            if "optionsKey" in alias:
+                options_key = str(alias["optionsKey"]).strip()
+                if not options_key:
+                    errors.append(f"Web entity alias {key} optionsKey must be non-empty")
+                elif options_key not in local_state_keys:
+                    errors.append(f"Web entity alias {key} optionsKey must point at a project.web_local_state_keys entry")
 
 
 def check_manual_web_entity_metadata(product: dict, errors: list[str]) -> None:
