@@ -36,6 +36,24 @@ WEB_OPTIONS_KEYS = {
     "update_frequency": "update_freq_options",
 }
 
+DOCS_SETTINGS_TABLES = {
+    ROOT / "docs" / "screen-settings.md": {
+        "screen_brightness": ["brightness_day", "brightness_night"],
+        "night_schedule": [
+            "schedule_enabled",
+            "schedule_on_hour",
+            "schedule_off_hour",
+            "schedule_wake_timeout",
+        ],
+        "screen_rotation": ["screen_rotation"],
+    },
+    ROOT / "docs" / "screen-tone.md": {
+        "screen_tone": ["base_tone_enabled", "base_tone"],
+        "night_tone": ["warm_tones_enabled", "warm_tone_intensity"],
+        "warm_tone_override": ["warm_tone_override"],
+    },
+}
+
 
 def load_timezones():
     spec = importlib.util.spec_from_file_location("espframe_timezones", TIMEZONES_PATH)
@@ -196,6 +214,73 @@ def web_product_settings() -> dict[str, dict[str, object]]:
     return result
 
 
+def setting_lookup() -> dict[str, dict[str, object]]:
+    return {str(setting["key"]): setting for setting in settings()}
+
+
+def docs_setting_label(setting: dict[str, object]) -> str:
+    if setting.get("docs_label"):
+        return str(setting["docs_label"])
+    entity = setting.get("entity") or {}
+    name = str(entity.get("name", ""))
+    return name.split(": ", 1)[-1]
+
+
+def docs_setting_default(setting: dict[str, object]) -> str:
+    return str(setting.get("docs_default", setting.get("default", "")))
+
+
+def docs_setting_description(setting: dict[str, object]) -> str:
+    if setting.get("docs_description"):
+        return str(setting["docs_description"])
+    parts: list[str] = []
+    if "min" in setting and "max" in setting:
+        parts.append(f'{setting["min"]}-{setting["max"]}')
+    if "step" in setting:
+        parts.append(f'step {setting["step"]}')
+    return ", ".join(parts)
+
+
+def render_settings_table(setting_keys: list[str], all_settings: dict[str, dict[str, object]]) -> str:
+    lines = [
+        "| Setting | Default | Description |",
+        "|---------|---------|-------------|",
+    ]
+    for key in setting_keys:
+        setting = all_settings[key]
+        lines.append(
+            f"| **{docs_setting_label(setting)}** | "
+            f"{docs_setting_default(setting)} | "
+            f"{docs_setting_description(setting)} |"
+        )
+    return "\n".join(lines)
+
+
+def replace_marked_block(text: str, block_id: str, content: str, path: Path) -> str:
+    start_marker = f"<!-- ESPFRAME:SETTINGS_TABLE {block_id} START -->"
+    end_marker = f"<!-- ESPFRAME:SETTINGS_TABLE {block_id} END -->"
+    pattern = re.compile(
+        f"{re.escape(start_marker)}.*?{re.escape(end_marker)}",
+        re.DOTALL,
+    )
+    replacement = f"{start_marker}\n{content}\n{end_marker}"
+    result, count = pattern.subn(replacement, text, count=1)
+    if count != 1:
+        raise RuntimeError(f"Unable to locate settings table block {block_id!r} in {path.relative_to(ROOT)}")
+    return result
+
+
+def generated_docs(path: Path, table_blocks: dict[str, list[str]]) -> str:
+    text = path.read_text()
+    all_settings = setting_lookup()
+    for block_id, setting_keys in table_blocks.items():
+        missing = [key for key in setting_keys if key not in all_settings]
+        if missing:
+            raise RuntimeError(f"{path.relative_to(ROOT)} references unknown settings: {', '.join(missing)}")
+        text = replace_marked_block(text, block_id, render_settings_table(setting_keys, all_settings), path)
+    return text
+
+
 def write_or_check(path: Path, content: str, check: bool) -> bool:
     old = path.read_text() if path.exists() else ""
     if old == content:
@@ -223,6 +308,8 @@ def generate(check: bool) -> int:
     changed |= write_or_check(TIME_YAML_PATH, replace_timezone_yaml(TIME_YAML_PATH.read_text(), timezone_options()), check)
     changed |= write_or_check(WEB_PUBLIC_STYLE_PATH, WEB_STYLE_PATH.read_text(), check)
     changed |= write_or_check(WEB_APP_PATH, web_app_bundle(), check)
+    for path, table_blocks in DOCS_SETTINGS_TABLES.items():
+        changed |= write_or_check(path, generated_docs(path, table_blocks), check)
     if check and changed:
         print("Generated files are stale. Run `npm run generate`.", file=sys.stderr)
         return 1
