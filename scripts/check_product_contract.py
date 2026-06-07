@@ -293,7 +293,13 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
             public_asset = ROOT / "docs" / "public" / value
             if not public_asset.is_file():
                 errors.append(f"Missing file: {rel(public_asset)}")
-    for field in ("web_installer_required_browsers", "web_installer_unsupported_browsers"):
+    for field in (
+        "web_installer_required_browsers",
+        "web_installer_unsupported_browsers",
+        "immich_server_url_schemes",
+        "immich_server_url_targets",
+        "immich_server_url_examples",
+    ):
         values = project.get(field, [])
         if not isinstance(values, list) or not values:
             errors.append(f"project.{field} must be a non-empty list")
@@ -407,6 +413,34 @@ def check_immich_api_key_metadata(product: dict, errors: list[str]) -> None:
             "docs/api-key.md permission rows must match project.immich_api_key_permissions "
             f"(expected {expected_names}, found {documented_names})"
         )
+
+
+def check_immich_connection_metadata(product: dict, errors: list[str]) -> None:
+    project = product["project"]
+    schemes = project.get("immich_server_url_schemes", [])
+    targets = project.get("immich_server_url_targets", [])
+    examples = project.get("immich_server_url_examples", [])
+
+    install_docs = read(ROOT / "docs" / "install.md", errors)
+    api_key_docs = read(ROOT / "docs" / "api-key.md", errors)
+    troubleshooting_docs = read(ROOT / "docs" / "troubleshooting.md", errors)
+
+    docs_to_check = (
+        ("docs/install.md", install_docs),
+        ("docs/api-key.md", api_key_docs),
+        ("docs/troubleshooting.md", troubleshooting_docs),
+    )
+    for field_name, values in (
+        ("immich_server_url_schemes", schemes),
+        ("immich_server_url_targets", targets),
+        ("immich_server_url_examples", examples),
+    ):
+        if not isinstance(values, list):
+            continue
+        for label, text in docs_to_check:
+            for value in values:
+                if isinstance(value, str) and value.strip():
+                    require_contains(text, value.strip(), f"{label} {field_name}", errors)
 
 
 def check_public_manifest_urls(product: dict, errors: list[str]) -> None:
@@ -1184,6 +1218,7 @@ def main() -> int:
     check_npm_package_metadata(product, errors)
     check_license_metadata(product, errors)
     check_immich_api_key_metadata(product, errors)
+    check_immich_connection_metadata(product, errors)
     check_devices(product, errors)
     check_public_manifest_urls(product, errors)
     check_public_site_references(product, errors)

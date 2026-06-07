@@ -21,6 +21,9 @@
       { "name": "memory.read", "purpose": "\"On this day\" memories and groupings" },
       { "name": "map.read", "purpose": "Additional GPS/map data beyond EXIF" }
     ],
+    "immich_server_url_schemes": ["http://", "https://"],
+    "immich_server_url_targets": ["IP address", "domain"],
+    "immich_server_url_examples": ["http://192.168.1.30:2283", "https://photos.example.com"],
     "favicon": "favicon.svg",
     "npm_package_name": "immich-frame",
     "license_id": "PolyForm-Noncommercial-1.0.0",
