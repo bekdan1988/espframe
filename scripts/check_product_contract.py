@@ -361,9 +361,29 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
         "screen_tone_night_timing",
         "screen_tone_night_recovery",
         "screen_tone_override_duration",
+        "clock_default_format",
+        "clock_default_timezone",
+        "clock_update_interval",
     ):
         if not str(project.get(field, "")).strip():
             errors.append(f"project.{field} is required")
+    clock_format_options = project.get("clock_format_options", [])
+    if not isinstance(clock_format_options, list) or not clock_format_options:
+        errors.append("project.clock_format_options must be a non-empty list")
+    elif any(not isinstance(value, str) or not value.strip() for value in clock_format_options):
+        errors.append("project.clock_format_options must only contain non-empty strings")
+    if not isinstance(project.get("clock_default_show"), bool):
+        errors.append("project.clock_default_show must be true or false")
+    ntp_default_servers = project.get("ntp_default_servers", [])
+    if not isinstance(ntp_default_servers, list) or not ntp_default_servers:
+        errors.append("project.ntp_default_servers must be a non-empty list")
+    elif any(not isinstance(value, str) or not value.strip() for value in ntp_default_servers):
+        errors.append("project.ntp_default_servers must only contain non-empty strings")
+    timezone_effects = project.get("timezone_change_effects", [])
+    if not isinstance(timezone_effects, list) or not timezone_effects:
+        errors.append("project.timezone_change_effects must be a non-empty list")
+    elif any(not isinstance(value, str) or not value.strip() for value in timezone_effects):
+        errors.append("project.timezone_change_effects must only contain non-empty strings")
     screen_schedule_effects = project.get("screen_schedule_off_effects", [])
     if not isinstance(screen_schedule_effects, list) or not screen_schedule_effects:
         errors.append("project.screen_schedule_off_effects must be a non-empty list")
@@ -804,6 +824,118 @@ def check_screen_tone_metadata(product: dict, errors: list[str]) -> None:
     ):
         require_contains(web_template, needle, rel(WEB_TEMPLATE), errors)
     require_contains(slideshow_yaml, "accent + warm tones", "common/addon/immich_slideshow.yaml", errors)
+
+
+def check_clock_time_metadata(product: dict, errors: list[str]) -> None:
+    project = product["project"]
+    clock_default_format = str(project.get("clock_default_format", "")).strip()
+    clock_format_options = [str(value).strip() for value in project.get("clock_format_options", []) if str(value).strip()]
+    clock_default_timezone = str(project.get("clock_default_timezone", "")).strip()
+    clock_default_show = project.get("clock_default_show")
+    clock_update_interval = str(project.get("clock_update_interval", "")).strip()
+    ntp_default_servers = [str(value).strip() for value in project.get("ntp_default_servers", []) if str(value).strip()]
+    timezone_effects = [str(value).strip() for value in project.get("timezone_change_effects", []) if str(value).strip()]
+
+    settings_by_key = {str(setting.get("key", "")).strip(): setting for setting in product["settings"]}
+    clock_format_setting = settings_by_key.get("clock_format")
+    if not clock_format_setting:
+        errors.append("product settings must include clock_format")
+    else:
+        if clock_default_format and clock_format_setting.get("default") != clock_default_format:
+            errors.append("project.clock_default_format must match the clock_format setting default")
+        if clock_format_options and clock_format_setting.get("options") != clock_format_options:
+            errors.append("project.clock_format_options must match the clock_format setting options")
+
+    static_timezone_default = WEB_STATIC_ENTITIES["timezone"].get("default")
+    if clock_default_timezone and static_timezone_default != clock_default_timezone:
+        errors.append("project.clock_default_timezone must match the static web timezone default")
+    if isinstance(clock_default_show, bool) and WEB_STATIC_ENTITIES["show_clock"].get("default") != clock_default_show:
+        errors.append("project.clock_default_show must match the static web show_clock default")
+    static_ntp_defaults = [
+        str(WEB_STATIC_ENTITIES[key].get("default", ""))
+        for key in ("ntp_server_1", "ntp_server_2", "ntp_server_3")
+    ]
+    if ntp_default_servers and static_ntp_defaults != ntp_default_servers:
+        errors.append("project.ntp_default_servers must match the static web NTP defaults")
+
+    install_docs = read(ROOT / "docs" / "install.md", errors)
+    index_docs = read(ROOT / "docs" / "index.md", errors)
+    backup_docs = read(ROOT / "docs" / "backup.md", errors)
+    time_yaml = read(TIME_YAML, errors)
+    web_template = read(WEB_TEMPLATE, errors)
+
+    for needle in (
+        clock_default_format,
+        clock_default_timezone,
+        clock_update_interval,
+        "shows the clock by default",
+        "sunrise/sunset based brightness and night tone",
+    ):
+        if needle:
+            require_contains(install_docs, needle, "docs/install.md", errors)
+    for server in ntp_default_servers:
+        require_contains(install_docs, server, "docs/install.md", errors)
+
+    for needle in ("Clock Overlay", "current time"):
+        require_contains(index_docs, needle, "docs/index.md", errors)
+    for needle in ("Show clock", "format", "timezone"):
+        require_contains(backup_docs, needle, "docs/backup.md", errors)
+
+    for option in clock_format_options:
+        require_contains(time_yaml, f'      - "{option}"', rel(TIME_YAML), errors)
+    if clock_default_format:
+        require_contains(time_yaml, f'initial_option: "{clock_default_format}"', rel(TIME_YAML), errors)
+    if clock_default_timezone:
+        require_contains(time_yaml, f'initial_option: "{clock_default_timezone}"', rel(TIME_YAML), errors)
+        timezone_id = clock_default_timezone.split(" (", 1)[0]
+        require_contains(time_yaml, f'timezone: "{timezone_id}"', rel(TIME_YAML), errors)
+    for index, server in enumerate(ntp_default_servers, start=1):
+        key = f"ntp_server_{index}"
+        require_contains(time_yaml, f'  {key}: "{server}"', rel(TIME_YAML), errors)
+        require_contains(time_yaml, f'initial_value: "${{{key}}}"', rel(TIME_YAML), errors)
+    if clock_default_show is True:
+        require_contains(time_yaml, "restore_mode: RESTORE_DEFAULT_ON", rel(TIME_YAML), errors)
+    elif clock_default_show is False:
+        require_contains(time_yaml, "restore_mode: RESTORE_DEFAULT_OFF", rel(TIME_YAML), errors)
+    if clock_update_interval:
+        require_contains(time_yaml, clock_update_interval, rel(TIME_YAML), errors)
+    if clock_update_interval == "60 seconds":
+        require_contains(time_yaml, "interval: 60s", rel(TIME_YAML), errors)
+
+    effect_markers = {
+        "updates clock display": "script.execute: update_clock_display",
+        "recalculates sunrise/sunset": "script.execute: backlight_recalc_sunrise_sunset",
+        "checks screen schedule": "script.execute: screen_schedule_check",
+    }
+    for effect in timezone_effects:
+        marker = effect_markers.get(effect)
+        if marker:
+            require_contains(time_yaml, marker, rel(TIME_YAML), errors)
+        else:
+            errors.append(f"project.timezone_change_effects has no checker mapping for {effect!r}")
+
+    for needle in (
+        "Clock: Format",
+        "Clock: Timezone",
+        "Clock: Show",
+        "Clock: NTP Server 1",
+        "Clock: NTP Server 2",
+        "Clock: NTP Server 3",
+        "apply_ntp_servers",
+        "update_clock_display",
+    ):
+        require_contains(time_yaml, needle, rel(TIME_YAML), errors)
+    for needle in (
+        "Clock & timezone",
+        "Clock Format",
+        "Timezone",
+        "NTP Servers",
+        "Show Clock",
+        "ntp_server_1",
+        "ntp_server_2",
+        "ntp_server_3",
+    ):
+        require_contains(web_template, needle, rel(WEB_TEMPLATE), errors)
 
 
 def check_public_manifest_urls(product: dict, errors: list[str]) -> None:
@@ -1615,6 +1747,7 @@ def main() -> int:
     check_touch_controls_metadata(product, errors)
     check_screen_schedule_metadata(product, errors)
     check_screen_tone_metadata(product, errors)
+    check_clock_time_metadata(product, errors)
     check_devices(product, errors)
     check_public_manifest_urls(product, errors)
     check_public_site_references(product, errors)
