@@ -7,6 +7,7 @@
   var STATIC_ENTITIES = {"firmware":{"entity":"text_sensor/Firmware: Version"},"timezone":{"entity":"select/Clock: Timezone","optionsKey":"tz_options","default":"Europe/London (GMT+0)"},"ntp_server_1":{"entity":"text/Clock: NTP Server 1","default":"0.pool.ntp.org"},"ntp_server_2":{"entity":"text/Clock: NTP Server 2","default":"1.pool.ntp.org"},"ntp_server_3":{"entity":"text/Clock: NTP Server 3","default":"2.pool.ntp.org"},"album_ids":{"entity":"text/Photos: Album IDs"},"album_labels":{"entity":"text/Photos: Album Labels"},"person_ids":{"entity":"text/Photos: Person IDs"},"person_labels":{"entity":"text/Photos: Person Labels"},"sunrise":{"entity":"text_sensor/Screen: Sunrise"},"sunset":{"entity":"text_sensor/Screen: Sunset"},"developer_features_enabled":{"entity":"switch/Developer: Features","boolFromState":true},"show_clock":{"entity":"switch/Clock: Show","boolFromState":true,"default":true}};
   var MANUAL_ENTITIES = {"immich_url":{"entity":"text/Connection: Server URL"},"api_key":{"entity":"text/Connection: API Key"},"backlight":{"entity":"light/Screen: Backlight"},"update":{"entity":"update/Firmware: Update"},"update_beta":{"entity":"update/Firmware: Update Beta"},"apply_photo_source":{"entity":"button/Apply Photo Source"},"firmware_check":{"entity":"button/Firmware: Check for Update"}};
   var ENTITY_ALIASES = {"schedule_enabled":[{"entity":"switch/Screen: Schedule","boolFromState":true}],"schedule_on_hour":[{"entity":"number/Screen: Schedule On","default":6,"number":true}],"schedule_off_hour":[{"entity":"number/Screen: Schedule Off","default":23,"number":true}]};
+  var FIRMWARE_MANIFEST_URLS = {"stable":"https://jtenniswood.github.io/espframe/firmware/manifest.json","beta":"https://jtenniswood.github.io/espframe/firmware/beta/manifest.json"};
 
   var S = {
     tz_options: TIMEZONES,
@@ -2158,12 +2159,12 @@
     fwBody.appendChild(makeFirmwareUrlField(
       "Stable Manifest URL",
       "firmware_manifest_url",
-      "https://jtenniswood.github.io/espframe/firmware/manifest.json"
+      FIRMWARE_MANIFEST_URLS.stable
     ));
     fwBody.appendChild(makeFirmwareUrlField(
       "Beta Manifest URL",
       "firmware_beta_manifest_url",
-      "https://jtenniswood.github.io/espframe/firmware/beta/manifest.json"
+      FIRMWARE_MANIFEST_URLS.beta
     ));
     fwBody.appendChild(firmwareUrlStatus);
 

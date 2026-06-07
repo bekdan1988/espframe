@@ -7,6 +7,7 @@
   var STATIC_ENTITIES = __ESPFRAME_STATIC_ENTITIES__;
   var MANUAL_ENTITIES = __ESPFRAME_MANUAL_ENTITIES__;
   var ENTITY_ALIASES = __ESPFRAME_ENTITY_ALIASES__;
+  var FIRMWARE_MANIFEST_URLS = __ESPFRAME_FIRMWARE_MANIFEST_URLS__;
 
   var S = {
     tz_options: TIMEZONES,
@@ -2158,12 +2159,12 @@
     fwBody.appendChild(makeFirmwareUrlField(
       "Stable Manifest URL",
       "firmware_manifest_url",
-      "https://jtenniswood.github.io/espframe/firmware/manifest.json"
+      FIRMWARE_MANIFEST_URLS.stable
     ));
     fwBody.appendChild(makeFirmwareUrlField(
       "Beta Manifest URL",
       "firmware_beta_manifest_url",
-      "https://jtenniswood.github.io/espframe/firmware/beta/manifest.json"
+      FIRMWARE_MANIFEST_URLS.beta
     ));
     fwBody.appendChild(firmwareUrlStatus);
 

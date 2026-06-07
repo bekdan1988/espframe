@@ -161,6 +161,29 @@ def devices_by_slug() -> dict[str, dict[str, Any]]:
     return devices
 
 
+def public_base_url(product: dict[str, Any] | None = None) -> str:
+    data = product if product is not None else load_product()
+    return str(data["project"].get("public_base_url", "")).rstrip("/")
+
+
+def device_public_manifest_urls(product: dict[str, Any] | None = None) -> dict[str, dict[str, str]]:
+    data = product if product is not None else load_product()
+    base_url = public_base_url(data)
+    return {
+        str(device["slug"]): {
+            "stable": f'{base_url}/{str(device["public_manifest"]).lstrip("/")}',
+            "beta": f'{base_url}/{str(device["public_beta_manifest"]).lstrip("/")}',
+        }
+        for device in data["devices"]
+    }
+
+
+def default_public_manifest_urls(product: dict[str, Any] | None = None) -> dict[str, str]:
+    data = product if product is not None else load_product()
+    first_device = data["devices"][0]
+    return device_public_manifest_urls(data)[str(first_device["slug"])]
+
+
 def settings() -> list[dict[str, Any]]:
     return list(load_product()["settings"])
 

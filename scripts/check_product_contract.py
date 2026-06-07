@@ -20,7 +20,10 @@ from product_config import (
     WEB_LOCAL_STATE_KEYS,
     WEB_MANUAL_ENTITIES,
     WEB_STATIC_ENTITIES,
+    default_public_manifest_urls,
+    device_public_manifest_urls,
     load_product,
+    public_base_url,
     web_entity_aliases_metadata,
     web_initial_fetch_keys,
     web_manual_entities_metadata,
@@ -197,6 +200,40 @@ def check_devices(product: dict, errors: list[str]) -> None:
         read(build_yaml, errors)
 
 
+def check_public_manifest_urls(product: dict, errors: list[str]) -> None:
+    base_url = public_base_url(product)
+    if not base_url.startswith("https://"):
+        errors.append("project.public_base_url must be an https URL")
+
+    urls_by_slug = device_public_manifest_urls(product)
+    for device in product["devices"]:
+        slug = str(device.get("slug", "")).strip()
+        urls = urls_by_slug.get(slug, {})
+        for label, field in (("stable", "public_manifest"), ("beta", "public_beta_manifest")):
+            path = str(device.get(field, "")).strip()
+            if not path or path.startswith("/") or ".." in Path(path).parts:
+                errors.append(f"Device {slug} has invalid {field}: {path}")
+            url = urls.get(label, "")
+            if not url.startswith(f"{base_url}/"):
+                errors.append(f"Device {slug} {field} URL must be under project.public_base_url")
+
+    default_urls = default_public_manifest_urls(product)
+    firmware_update = read(ROOT / "common" / "addon" / "firmware_update.yaml", errors)
+    packages = read(ROOT / "devices" / "guition-esp32-p4-jc8012p4a1" / "packages.yaml", errors)
+    backup_docs = read(ROOT / "docs" / "backup.md", errors)
+    docs_workflow = read(ROOT / ".github" / "workflows" / "docs.yml", errors)
+    for label, url in default_urls.items():
+        if not url.startswith("https://"):
+            errors.append(f"Default {label} firmware manifest URL must be an https URL")
+        for filename, text in (
+            ("common/addon/firmware_update.yaml", firmware_update),
+            ("devices/guition-esp32-p4-jc8012p4a1/packages.yaml", packages),
+            ("docs/backup.md", backup_docs),
+        ):
+            require_contains(text, url, filename, errors)
+    require_contains(docs_workflow, f'--base-url "{base_url}"', ".github/workflows/docs.yml", errors)
+
+
 def check_esphome_version(product: dict, errors: list[str]) -> None:
     version = str(product["project"].get("esphome_version", "")).strip()
     if not version:
@@ -343,6 +380,10 @@ def check_generated_web_metadata(product: dict, web_text: str, errors: list[str]
     initial_fetch_keys = extract_js_json_var(web_text, "INITIAL_FETCH_KEYS", errors)
     if initial_fetch_keys is not None and initial_fetch_keys != web_initial_fetch_keys(product["settings"]):
         errors.append("Generated web INITIAL_FETCH_KEYS does not match product/espframe.json")
+
+    firmware_manifest_urls = extract_js_json_var(web_text, "FIRMWARE_MANIFEST_URLS", errors)
+    if firmware_manifest_urls is not None and firmware_manifest_urls != default_public_manifest_urls(product):
+        errors.append("Generated web FIRMWARE_MANIFEST_URLS does not match product/espframe.json")
 
 
 def check_static_web_defaults_against_firmware(errors: list[str]) -> None:
@@ -608,6 +649,7 @@ def check_settings(product: dict, errors: list[str]) -> None:
     require_contains(web_template, "__ESPFRAME_MANUAL_ENTITIES__", rel(WEB_TEMPLATE), errors)
     require_contains(web_template, "__ESPFRAME_ENTITY_ALIASES__", rel(WEB_TEMPLATE), errors)
     require_contains(web_template, "__ESPFRAME_INITIAL_FETCH_KEYS__", rel(WEB_TEMPLATE), errors)
+    require_contains(web_template, "__ESPFRAME_FIRMWARE_MANIFEST_URLS__", rel(WEB_TEMPLATE), errors)
     for needle in (
         "registerStaticEntityStateDefaults",
         "registerProductSettingStateDefaults",
@@ -638,6 +680,7 @@ def main() -> int:
     errors: list[str] = []
     product = load_product()
     check_devices(product, errors)
+    check_public_manifest_urls(product, errors)
     check_esphome_version(product, errors)
     check_workflows(errors)
     check_settings(product, errors)
