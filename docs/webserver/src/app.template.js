@@ -4,25 +4,36 @@
   var TIMEZONES = __ESPFRAME_TIMEZONES__;
   var TIMEZONE_LABELS = __ESPFRAME_TIMEZONE_LABELS__;
   var SCREEN_ROTATION_OPTIONS = ["0", "90", "180", "270"];
+  var PRODUCT_SETTINGS = __ESPFRAME_PRODUCT_SETTINGS__;
+
+  function settingDefault(key, fallback) {
+    var spec = PRODUCT_SETTINGS && PRODUCT_SETTINGS[key];
+    return spec && spec.default !== undefined ? spec.default : fallback;
+  }
+
+  function settingOptions(key, fallback) {
+    var spec = PRODUCT_SETTINGS && PRODUCT_SETTINGS[key];
+    return spec && Array.isArray(spec.options) && spec.options.length ? spec.options.slice() : fallback;
+  }
 
   var S = {
-    clock_options: ["24 Hour", "12 Hour"],
+    clock_options: settingOptions("clock_format", ["24 Hour", "12 Hour"]),
     tz_options: TIMEZONES,
     tz_labels: TIMEZONE_LABELS,
-    interval: "15 seconds",
-    interval_options: [
+    interval: settingDefault("interval", "15 seconds"),
+    interval_options: settingOptions("interval", [
       "10 seconds", "15 seconds", "20 seconds", "30 seconds", "45 seconds",
       "1 minute", "2 minutes", "3 minutes", "5 minutes", "10 minutes"
-    ],
-    conn_timeout: "10 minutes",
-    conn_timeout_options: [
+    ]),
+    conn_timeout: settingDefault("conn_timeout", "10 minutes"),
+    conn_timeout_options: settingOptions("conn_timeout", [
       "30 seconds", "45 seconds", "1 minute", "2 minutes", "3 minutes",
       "5 minutes", "10 minutes", "15 minutes", "20 minutes", "30 minutes"
-    ],
+    ]),
     brightness: 100,
     backlight_on: true,
     show_clock: true,
-    clock_format: "24 Hour",
+    clock_format: settingDefault("clock_format", "24 Hour"),
     immich_url: "",
     api_key: "",
     timezone: "Europe/London (GMT+0)",
@@ -37,8 +48,8 @@
     beta_available: false,
     auto_update: true,
     beta_channel: false,
-    update_frequency: "Daily",
-    update_freq_options: ["Hourly", "Daily", "Weekly", "Monthly"],
+    update_frequency: settingDefault("update_frequency", "Daily"),
+    update_freq_options: settingOptions("update_frequency", ["Hourly", "Daily", "Weekly", "Monthly"]),
     firmware_manifest_url: "",
     firmware_beta_manifest_url: "",
     schedule_enabled: false,
@@ -50,8 +61,8 @@
     brightness_night: 75,
     sunrise: "",
     sunset: "",
-    photo_source: "All Photos",
-    photo_source_options: ["All Photos", "Favorites", "Album", "Person", "Memories"],
+    photo_source: settingDefault("photo_source", "All Photos"),
+    photo_source_options: settingOptions("photo_source", ["All Photos", "Favorites", "Album", "Person", "Memories"]),
     album_ids: "",
     album_labels: "",
     person_ids: "",
@@ -62,26 +73,26 @@
     warm_tone_intensity: 50,
     warm_tone_override: false,
     date_filter_enabled: false,
-    date_filter_mode: "Fixed Range",
-    date_filter_mode_options: ["Fixed Range", "Relative Range"],
+    date_filter_mode: settingDefault("date_filter_mode", "Fixed Range"),
+    date_filter_mode_options: settingOptions("date_filter_mode", ["Fixed Range", "Relative Range"]),
     date_from: "",
     date_to: "",
     relative_amount: 1,
-    relative_unit: "Years",
-    relative_unit_options: ["Months", "Years"],
+    relative_unit: settingDefault("relative_unit", "Years"),
+    relative_unit_options: settingOptions("relative_unit", ["Months", "Years"]),
     portrait_pairing: true,
-    photo_orientation: "Any",
-    photo_orientation_options: ["Any", "Portrait Only", "Landscape Only"],
-    display_mode: "Fill",
-    display_mode_options: ["Fill", "Fit"],
+    photo_orientation: settingDefault("photo_orientation", "Any"),
+    photo_orientation_options: settingOptions("photo_orientation", ["Any", "Portrait Only", "Landscape Only"]),
+    display_mode: settingDefault("display_mode", "Fill"),
+    display_mode_options: settingOptions("display_mode", ["Fill", "Fit"]),
     photo_metadata_date_enabled: true,
-    photo_metadata_date_format: "Date Taken",
-    photo_metadata_date_format_options: ["Relative Date", "Date Taken"],
-    photo_metadata_date_taken_format: "1 January, 2026",
-    photo_metadata_date_taken_format_options: ["1 January, 2026", "January 1, 2026"],
+    photo_metadata_date_format: settingDefault("photo_metadata_date_format", "Date Taken"),
+    photo_metadata_date_format_options: settingOptions("photo_metadata_date_format", ["Relative Date", "Date Taken"]),
+    photo_metadata_date_taken_format: settingDefault("photo_metadata_date_taken_format", "1 January, 2026"),
+    photo_metadata_date_taken_format_options: settingOptions("photo_metadata_date_taken_format", ["1 January, 2026", "January 1, 2026"]),
     photo_metadata_location_enabled: true,
-    screen_rotation: "0",
-    screen_rotation_options: ["0", "180"],
+    screen_rotation: settingDefault("screen_rotation", "0"),
+    screen_rotation_options: settingOptions("screen_rotation", ["0", "180"]),
     developer_features_enabled: false,
   };
 

@@ -127,6 +127,7 @@ def check_setting(setting: dict, web_text: str, errors: list[str]) -> None:
 
 def check_settings(product: dict, errors: list[str]) -> None:
     web_text = read(WEB_APP, errors)
+    require_contains(web_text, "__ESPFRAME_PRODUCT_SETTINGS__", rel(WEB_APP), errors)
     seen: set[str] = set()
     for setting in product["settings"]:
         key = str(setting.get("key", "")).strip()

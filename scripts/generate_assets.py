@@ -16,6 +16,8 @@ import re
 import sys
 from pathlib import Path
 
+from product_config import settings
+
 
 ROOT = Path(__file__).resolve().parents[1]
 TIMEZONES_PATH = ROOT / "components" / "espframe" / "timezones.py"
@@ -157,13 +159,28 @@ def web_app_bundle() -> str:
     css = WEB_STYLE_PATH.read_text().rstrip("\n")
     timezones_json = json.dumps(timezone_options(), separators=(",", ":"))
     timezone_labels_json = json.dumps(timezone_labels(), separators=(",", ":"))
+    product_settings_json = json.dumps(web_product_settings(), separators=(",", ":"))
     css_json = json.dumps(css, separators=(",", ":"))
     return (
         template
         .replace("__ESPFRAME_TIMEZONES__", timezones_json)
         .replace("__ESPFRAME_TIMEZONE_LABELS__", timezone_labels_json)
+        .replace("__ESPFRAME_PRODUCT_SETTINGS__", product_settings_json)
         .replace("__ESPFRAME_CSS__", css_json)
     )
+
+
+def web_product_settings() -> dict[str, dict[str, object]]:
+    result: dict[str, dict[str, object]] = {}
+    for setting in settings():
+        entity = setting["entity"]
+        key = str(setting["key"])
+        result[key] = {
+            "entity": f'{entity["domain"]}/{entity["name"]}',
+            "default": setting.get("default", ""),
+            "options": setting.get("options", []),
+        }
+    return result
 
 
 def write_or_check(path: Path, content: str, check: bool) -> bool:
