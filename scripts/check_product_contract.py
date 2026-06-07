@@ -2300,9 +2300,10 @@ def check_photo_source_metadata(product: dict, errors: list[str]) -> None:
             ("docs/photo-sources.md", photo_docs),
             ("docs/backup.md", backup_docs),
             (rel(WEB_TEMPLATE), web_template),
-            ("common/addon/immich_filter.yaml", filter_yaml),
         ):
             require_contains(text, id_limit_text, label, errors)
+        if filter_yaml.count(f"max_length: {id_limit}") < 4:
+            errors.append("common/addon/immich_filter.yaml must use project.photo_source_id_limit for album/person ID and label fields")
 
     for mode in photo_source_modes:
         for label, text in (
