@@ -3,7 +3,6 @@
 
   var TIMEZONES = __ESPFRAME_TIMEZONES__;
   var TIMEZONE_LABELS = __ESPFRAME_TIMEZONE_LABELS__;
-  var SCREEN_ROTATION_OPTIONS = ["0", "90", "180", "270"];
   var PRODUCT_SETTINGS = __ESPFRAME_PRODUCT_SETTINGS__;
 
   var S = {
@@ -64,6 +63,17 @@
 
   function productNumberStep(key, fallback) {
     return productNumberSettingField(key, "step", fallback);
+  }
+
+  function productSettingOptions(key, includeDeveloper) {
+    var spec = PRODUCT_SETTINGS && PRODUCT_SETTINGS[key];
+    var options = spec && Array.isArray(spec.options) ? spec.options.slice() : [];
+    if (includeDeveloper && spec && Array.isArray(spec.developerOptions)) {
+      spec.developerOptions.forEach(function (option) {
+        if (options.indexOf(option) === -1) options.push(option);
+      });
+    }
+    return options;
   }
 
   var CSS = __ESPFRAME_CSS__;
@@ -384,7 +394,8 @@
   }
 
   function screenRotationOptionsForUi() {
-    return S.developer_features_enabled ? SCREEN_ROTATION_OPTIONS.slice() : ["0", "180"];
+    var options = productSettingOptions("screen_rotation", S.developer_features_enabled);
+    return options.length ? options : ["0", "180"];
   }
 
   function effectiveScreenRotationForUi() {

@@ -101,6 +101,7 @@ def check_setting(setting: dict, web_text: str, errors: list[str]) -> None:
     web_default = json.dumps(raw_default, separators=(",", ":"))
     docs_default = str(setting.get("docs_default", default))
     options = [str(option) for option in setting.get("options", [])]
+    developer_options = [str(option) for option in setting.get("developer_options", [])]
 
     if not key or not domain or not name:
         errors.append(f"Setting {key or '<missing>'} needs key, entity.domain, and entity.name")
@@ -112,6 +113,8 @@ def check_setting(setting: dict, web_text: str, errors: list[str]) -> None:
     require_contains(web_text, web_default, f"web UI default for {key}", errors)
     for option in options:
         require_contains(web_text, option, f"web UI option for {key}", errors)
+    for option in developer_options:
+        require_contains(web_text, option, f"web UI developer option for {key}", errors)
 
     firmware_files = setting.get("firmware_files", [])
     if not firmware_files:
@@ -121,6 +124,8 @@ def check_setting(setting: dict, web_text: str, errors: list[str]) -> None:
         require_contains(text, f'name: "{name}"', f"{filename} entity for {key}", errors)
         for option in options:
             require_contains(text, f'"{option}"', f"{filename} option for {key}", errors)
+        for option in developer_options:
+            require_contains(text, f'"{option}"', f"{filename} developer option for {key}", errors)
         if entity.get("domain") == "select":
             initial_option = str(setting.get("firmware_initial_option", raw_default))
             if initial_option.startswith("${"):

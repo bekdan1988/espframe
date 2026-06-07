@@ -266,6 +266,8 @@ def web_product_settings() -> dict[str, dict[str, object]]:
         }
         if setting.get("options"):
             result[key]["optionsKey"] = WEB_OPTIONS_KEYS.get(key, f"{key}_options")
+        if setting.get("developer_options"):
+            result[key]["developerOptions"] = setting["developer_options"]
         for field in ("min", "max", "step"):
             if field in setting:
                 result[key][field] = setting[field]
