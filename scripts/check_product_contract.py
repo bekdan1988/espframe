@@ -64,6 +64,12 @@ def require_contains(text: str, needle: str, label: str, errors: list[str]) -> N
         errors.append(f"{label} is missing {needle!r}")
 
 
+def require_workflow_path_filter(text: str, path: str, label: str, errors: list[str]) -> None:
+    needles = (f'- "{path}"', f"- '{path}'", f"- {path}")
+    if not any(needle in text for needle in needles):
+        errors.append(f"{label} is missing workflow path filter {path!r}")
+
+
 def extract_js_json_var(text: str, var_name: str, errors: list[str]) -> object | None:
     match = re.search(rf"\bvar {re.escape(var_name)} = (.*?);", text)
     if not match:
@@ -694,6 +700,30 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
                 errors.append("project.github_workflow_names keys must be non-empty strings")
             if not label:
                 errors.append(f"project.github_workflow_names.{name or '<missing>'} must be a non-empty string")
+    workflow_path_filters = project.get("github_workflow_path_filters", {})
+    expected_path_filter_sets = {"compile_pull_request", "docs_push"}
+    if not isinstance(workflow_path_filters, dict) or not workflow_path_filters:
+        errors.append("project.github_workflow_path_filters must be a non-empty object")
+    else:
+        configured_filter_sets = {str(name).strip() for name in workflow_path_filters}
+        missing_filter_sets = sorted(expected_path_filter_sets - configured_filter_sets)
+        extra_filter_sets = sorted(configured_filter_sets - expected_path_filter_sets)
+        if missing_filter_sets:
+            errors.append(f"project.github_workflow_path_filters is missing filters: {', '.join(missing_filter_sets)}")
+        if extra_filter_sets:
+            errors.append(f"project.github_workflow_path_filters contains unknown filters: {', '.join(extra_filter_sets)}")
+        for raw_name, raw_paths in workflow_path_filters.items():
+            name = str(raw_name).strip()
+            if not name:
+                errors.append("project.github_workflow_path_filters keys must be non-empty strings")
+            if not isinstance(raw_paths, list) or not raw_paths:
+                errors.append(f"project.github_workflow_path_filters.{name or '<missing>'} must be a non-empty list")
+                continue
+            paths = [str(path).strip() for path in raw_paths]
+            if any(not path for path in paths):
+                errors.append(f"project.github_workflow_path_filters.{name or '<missing>'} must only contain non-empty strings")
+            if len(paths) != len(set(paths)):
+                errors.append(f"project.github_workflow_path_filters.{name or '<missing>'} must not contain duplicate paths")
     release_asset_suffixes = project.get("release_asset_suffixes", [])
     if not isinstance(release_asset_suffixes, list) or not release_asset_suffixes:
         errors.append("project.release_asset_suffixes must be a non-empty list")
@@ -3227,6 +3257,14 @@ def check_workflows(product: dict, errors: list[str]) -> None:
     default_branch = str(product["project"].get("github_default_branch", "")).strip()
     if default_branch:
         require_contains(docs_workflow, f"branches: [{default_branch}]", ".github/workflows/docs.yml", errors)
+    workflow_path_filters = product["project"].get("github_workflow_path_filters", {})
+    if isinstance(workflow_path_filters, dict):
+        for path in workflow_path_filters.get("compile_pull_request", []):
+            if isinstance(path, str) and path.strip():
+                require_workflow_path_filter(compile_workflow, path.strip(), ".github/workflows/compile.yml", errors)
+        for path in workflow_path_filters.get("docs_push", []):
+            if isinstance(path, str) and path.strip():
+                require_workflow_path_filter(docs_workflow, path.strip(), ".github/workflows/docs.yml", errors)
     workflow_texts = {
         "compile": (".github/workflows/compile.yml", compile_workflow),
         "docs": (".github/workflows/docs.yml", docs_workflow),
