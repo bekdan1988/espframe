@@ -1346,6 +1346,15 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
     retained_log_lines = project.get("web_ui_logs_retained_lines")
     if not isinstance(retained_log_lines, int) or isinstance(retained_log_lines, bool) or retained_log_lines < 1:
         errors.append("project.web_ui_logs_retained_lines must be a positive integer")
+    logs_event_source = str(project.get("web_ui_logs_event_source", "")).strip()
+    logs_event_name = str(project.get("web_ui_logs_event_name", "")).strip()
+    logs_clear_label = str(project.get("web_ui_logs_clear_label", "")).strip()
+    if logs_event_source and (not logs_event_source.startswith("/") or any(char.isspace() for char in logs_event_source)):
+        errors.append("project.web_ui_logs_event_source must be a root-relative path without whitespace")
+    if logs_event_name and not re.match(r"^[A-Za-z][A-Za-z0-9_-]*$", logs_event_name):
+        errors.append("project.web_ui_logs_event_name must be a non-empty event name")
+    if logs_clear_label and len(logs_clear_label) > 40:
+        errors.append("project.web_ui_logs_clear_label must be 40 characters or fewer")
     for field in ("date_filter_modes", "metadata_overlay_fields"):
         values = project.get(field, [])
         if not isinstance(values, list) or not values:
