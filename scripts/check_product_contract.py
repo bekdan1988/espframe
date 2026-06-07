@@ -3568,6 +3568,29 @@ def check_generated_asset_metadata(product: dict, errors: list[str]) -> None:
     web_template = read(WEB_TEMPLATE, errors)
     package_json = read(ROOT / "package.json", errors)
 
+    expected_outputs = {
+        "components/espframe/tz_data_generated.h",
+        "common/addon/time.yaml",
+        "docs/public/webserver/app.js",
+        "docs/public/webserver/style.css",
+    }
+    expected_sources = {
+        "components/espframe/timezones.py",
+        "docs/webserver/src/app.template.js",
+        "docs/webserver/src/style.css",
+        "product/espframe.json",
+        "scripts/product_config.py",
+    }
+    missing_outputs = sorted(expected_outputs - set(outputs))
+    missing_sources = sorted(expected_sources - set(sources))
+    overlapping_paths = sorted(set(outputs).intersection(sources))
+    if missing_outputs:
+        errors.append("project.generated_asset_outputs is missing paths: " + ", ".join(missing_outputs))
+    if missing_sources:
+        errors.append("project.generated_asset_sources is missing paths: " + ", ".join(missing_sources))
+    if overlapping_paths:
+        errors.append("Generated asset paths must not be listed as both sources and outputs: " + ", ".join(overlapping_paths))
+
     for filename in outputs + sources:
         path = check_relative_path(filename, f"Generated asset path {filename}", errors)
         if path:
