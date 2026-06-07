@@ -5,7 +5,7 @@ description: Configure Espframe over-the-air and HTTP firmware updates from GitH
 
 # Espframe Firmware Updates
 
-OTA and HTTP updates from GitHub. The device checks a manifest on GitHub Pages for stable and beta builds. The 10-inch model uses `https://jtenniswood.github.io/espframe/firmware/manifest.json`. Controls: device web UI at `http://<device-ip>/` under **Firmware** (and in Home Assistant).
+OTA and HTTP updates from GitHub. The device checks a manifest on GitHub Pages for stable and beta builds. The 10-inch model uses `https://jtenniswood.github.io/espframe/firmware/manifest.json` for stable firmware and `https://jtenniswood.github.io/espframe/firmware/beta/manifest.json` for beta firmware. Controls: device web UI at `http://<device-ip>/` under **Firmware** (and in Home Assistant).
 
 <!-- ESPFRAME:SETTINGS_TABLE firmware_controls START -->
 | Control | Type | Default | Description |

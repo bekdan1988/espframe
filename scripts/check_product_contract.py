@@ -253,6 +253,8 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
         "home_assistant_url",
         "home_assistant_requirement",
         "home_assistant_integration_platform",
+        "firmware_update_source",
+        "firmware_beta_channel_label",
         "favicon",
         "npm_package_name",
         "license_id",
@@ -309,6 +311,8 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
         "immich_server_url_schemes",
         "immich_server_url_targets",
         "immich_server_url_examples",
+        "firmware_update_methods",
+        "firmware_update_channels",
     ):
         values = project.get(field, [])
         if not isinstance(values, list) or not values:
@@ -497,6 +501,42 @@ def check_home_assistant_metadata(product: dict, errors: list[str]) -> None:
             if not isinstance(feature, str) or not feature.strip():
                 continue
             require_contains(home_assistant_docs, feature.strip(), "docs/home-assistant.md", errors)
+
+
+def check_firmware_update_metadata(product: dict, errors: list[str]) -> None:
+    project = product["project"]
+    methods = project.get("firmware_update_methods", [])
+    source = str(project.get("firmware_update_source", "")).strip()
+    channels = project.get("firmware_update_channels", [])
+    beta_label = str(project.get("firmware_beta_channel_label", "")).strip()
+    default_urls = default_public_manifest_urls(product)
+
+    firmware_docs = read(ROOT / "docs" / "firmware-update.md", errors)
+    backup_docs = read(ROOT / "docs" / "backup.md", errors)
+    firmware_yaml = read(ROOT / "common" / "addon" / "firmware_update.yaml", errors)
+    web_template = read(WEB_TEMPLATE, errors)
+    web_text = read(WEB_APP, errors)
+
+    for method in methods if isinstance(methods, list) else []:
+        if isinstance(method, str) and method.strip():
+            require_contains(firmware_docs, method.strip(), "docs/firmware-update.md", errors)
+            require_contains(firmware_yaml, method.strip(), "common/addon/firmware_update.yaml", errors)
+    if source:
+        require_contains(firmware_docs, source, "docs/firmware-update.md", errors)
+    if isinstance(channels, list):
+        for channel in channels:
+            if isinstance(channel, str) and channel.strip():
+                require_contains(firmware_docs, channel.strip(), "docs/firmware-update.md", errors)
+                require_contains(firmware_yaml, channel.strip(), "common/addon/firmware_update.yaml", errors)
+    if beta_label:
+        require_contains(firmware_docs, beta_label, "docs/firmware-update.md", errors)
+        require_contains(web_template, beta_label.capitalize(), rel(WEB_TEMPLATE), errors)
+    for label, url in default_urls.items():
+        require_contains(firmware_docs, url, "docs/firmware-update.md", errors)
+        require_contains(backup_docs, url, "docs/backup.md", errors)
+        require_contains(firmware_yaml, url, "common/addon/firmware_update.yaml", errors)
+        require_contains(web_text, url, rel(WEB_APP), errors)
+        require_contains(web_template, f"FIRMWARE_MANIFEST_URLS.{label}", rel(WEB_TEMPLATE), errors)
 
 
 def check_public_manifest_urls(product: dict, errors: list[str]) -> None:
@@ -1302,6 +1342,7 @@ def main() -> int:
     check_immich_api_key_metadata(product, errors)
     check_immich_connection_metadata(product, errors)
     check_home_assistant_metadata(product, errors)
+    check_firmware_update_metadata(product, errors)
     check_devices(product, errors)
     check_public_manifest_urls(product, errors)
     check_public_site_references(product, errors)
