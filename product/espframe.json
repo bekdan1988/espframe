@@ -199,6 +199,15 @@
       "developer_features_enabled": { "entity": "switch/Developer: Features", "boolFromState": true, "fetch": true },
       "show_clock": { "entity": "switch/Clock: Show", "boolFromState": true, "default": true }
     },
+    "web_manual_entities": {
+      "immich_url": { "entity": "text/Connection: Server URL", "firmware_file": "common/addon/immich_config.yaml" },
+      "api_key": { "entity": "text/Connection: API Key", "firmware_file": "common/addon/immich_config.yaml" },
+      "backlight": { "entity": "light/Screen: Backlight", "firmware_file": "common/addon/backlight.yaml" },
+      "update": { "entity": "update/Firmware: Update", "firmware_file": "common/addon/firmware_update.yaml" },
+      "update_beta": { "entity": "update/Firmware: Update Beta", "firmware_file": "common/addon/firmware_update.yaml" },
+      "apply_photo_source": { "entity": "button/Apply Photo Source", "firmware_file": "common/addon/immich_filter.yaml" },
+      "firmware_check": { "entity": "button/Firmware: Check for Update", "firmware_file": "common/addon/firmware_update.yaml" }
+    },
     "web_local_state_keys": [
       "api_key",
       "backlight_on",

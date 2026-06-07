@@ -17,7 +17,6 @@ from product_config import (
     DOCS_SETTINGS_TABLE_COLUMNS,
     DOCS_SETTINGS_TABLES,
     WEB_ENTITY_ALIASES,
-    WEB_MANUAL_ENTITIES,
     default_public_manifest_urls,
     device_public_manifest_urls,
     load_product,
@@ -27,6 +26,7 @@ from product_config import (
     web_entity_aliases_metadata,
     web_initial_fetch_keys,
     web_local_state_keys,
+    web_manual_entities,
     web_manual_entities_metadata,
     web_settings_metadata,
     web_static_entities,
@@ -3120,9 +3120,13 @@ def check_web_entity_metadata(product: dict, errors: list[str]) -> None:
                 errors.append(f"Web entity alias {key} optionsKey must be non-empty")
 
 
-def check_manual_web_entity_metadata(errors: list[str]) -> None:
+def check_manual_web_entity_metadata(product: dict, errors: list[str]) -> None:
+    manual_entities = web_manual_entities(product)
     seen_entities: set[str] = set()
-    for key, metadata in WEB_MANUAL_ENTITIES.items():
+    if not manual_entities:
+        errors.append("project.web_manual_entities must be a non-empty object")
+
+    for key, metadata in manual_entities.items():
         if not isinstance(key, str) or not key.strip():
             errors.append("Manual web entity keys must be non-empty strings")
         if not isinstance(metadata, dict):
@@ -3161,8 +3165,8 @@ def check_generated_web_metadata(product: dict, web_text: str, errors: list[str]
         errors.append("Generated web STATIC_ENTITIES does not match product/espframe.json")
 
     manual_entities = extract_js_json_var(web_text, "MANUAL_ENTITIES", errors)
-    if manual_entities is not None and manual_entities != web_manual_entities_metadata():
-        errors.append("Generated web MANUAL_ENTITIES does not match product_config.py")
+    if manual_entities is not None and manual_entities != web_manual_entities_metadata(product):
+        errors.append("Generated web MANUAL_ENTITIES does not match product/espframe.json")
 
     entity_aliases = extract_js_json_var(web_text, "ENTITY_ALIASES", errors)
     if entity_aliases is not None and entity_aliases != web_entity_aliases_metadata():
@@ -3267,7 +3271,7 @@ def check_web_ui_metadata(product: dict, web_template: str, web_text: str, error
 def check_web_template_key_references(product: dict, web_template: str, errors: list[str]) -> None:
     product_keys = {str(setting.get("key", "")).strip() for setting in product["settings"]}
     static_keys = set(web_static_entities(product))
-    manual_keys = set(WEB_MANUAL_ENTITIES)
+    manual_keys = set(web_manual_entities(product))
     local_state_keys = web_local_state_keys(product)
     known_state_keys = product_keys | static_keys | local_state_keys
     known_endpoint_keys = product_keys | static_keys | manual_keys
@@ -3491,7 +3495,7 @@ def check_settings(product: dict, errors: list[str]) -> None:
     web_template = read(WEB_TEMPLATE, errors)
     web_text = read(WEB_APP, errors)
     check_web_entity_metadata(product, errors)
-    check_manual_web_entity_metadata(errors)
+    check_manual_web_entity_metadata(product, errors)
     check_generated_web_metadata(product, web_text, errors)
     check_static_web_defaults_against_firmware(product, errors)
     check_web_ui_metadata(product, web_template, web_text, errors)
