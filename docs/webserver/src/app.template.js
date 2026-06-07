@@ -14,7 +14,6 @@
     backlight_on: true,
     immich_url: "",
     api_key: "",
-    timezone: "Europe/London (GMT+0)",
     firmware: "",
     installed_version: "",
     latest_version: "",

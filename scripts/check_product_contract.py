@@ -31,6 +31,7 @@ from product_config import (
 ROOT = Path(__file__).resolve().parent.parent
 WEB_TEMPLATE = ROOT / "docs" / "webserver" / "src" / "app.template.js"
 WEB_APP = ROOT / "docs" / "public" / "webserver" / "app.js"
+TIME_YAML = ROOT / "common" / "addon" / "time.yaml"
 SETTING_DOMAINS = {"number", "select", "switch", "text"}
 DOCS_TABLE_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 WEB_STATE_REF_RE = re.compile(r"\bS\.([A-Za-z_$][A-Za-z0-9_$]*)")
@@ -308,6 +309,35 @@ def check_generated_web_metadata(product: dict, web_text: str, errors: list[str]
         errors.append("Generated web INITIAL_FETCH_KEYS does not match product/espframe.json")
 
 
+def check_static_web_defaults_against_firmware(errors: list[str]) -> None:
+    text = read(TIME_YAML, errors)
+    timezone_default = WEB_STATIC_ENTITIES["timezone"].get("default")
+    if not isinstance(timezone_default, str) or not timezone_default:
+        errors.append("Static web entity timezone default must match the firmware initial_option")
+    else:
+        require_contains(
+            text,
+            f'initial_option: "{timezone_default}"',
+            rel(TIME_YAML),
+            errors,
+        )
+
+    for key in ("ntp_server_1", "ntp_server_2", "ntp_server_3"):
+        default = WEB_STATIC_ENTITIES[key].get("default")
+        if not isinstance(default, str) or not default:
+            errors.append(f"Static web entity {key} default must match the firmware substitution")
+            continue
+        require_contains(text, f'  {key}: "{default}"', rel(TIME_YAML), errors)
+        require_contains(text, f'initial_value: "${{{key}}}"', rel(TIME_YAML), errors)
+
+    show_clock_default = WEB_STATIC_ENTITIES["show_clock"].get("default")
+    if not isinstance(show_clock_default, bool):
+        errors.append("Static web entity show_clock default must be true or false")
+        return
+    restore_mode = "RESTORE_DEFAULT_ON" if show_clock_default is True else "RESTORE_DEFAULT_OFF"
+    require_contains(text, f"restore_mode: {restore_mode}", rel(TIME_YAML), errors)
+
+
 def check_web_template_key_references(product: dict, web_template: str, errors: list[str]) -> None:
     product_keys = {str(setting.get("key", "")).strip() for setting in product["settings"]}
     static_keys = set(WEB_STATIC_ENTITIES)
@@ -530,6 +560,7 @@ def check_settings(product: dict, errors: list[str]) -> None:
     web_text = read(WEB_APP, errors)
     check_web_entity_metadata(product, errors)
     check_generated_web_metadata(product, web_text, errors)
+    check_static_web_defaults_against_firmware(errors)
     check_web_template_key_references(product, web_template, errors)
     check_docs_table_metadata(product, errors)
     check_docs_table_membership(product, errors)

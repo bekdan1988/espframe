@@ -16,7 +16,12 @@ ROOT = Path(__file__).resolve().parent.parent
 PRODUCT_PATH = ROOT / "product" / "espframe.json"
 WEB_STATIC_ENTITIES = {
     "firmware": {"entity": "text_sensor/Firmware: Version", "fetch": True},
-    "timezone": {"entity": "select/Clock: Timezone", "optionsKey": "tz_options", "default": "", "fetch": True},
+    "timezone": {
+        "entity": "select/Clock: Timezone",
+        "optionsKey": "tz_options",
+        "default": "Europe/London (GMT+0)",
+        "fetch": True,
+    },
     "ntp_server_1": {"entity": "text/Clock: NTP Server 1", "default": "0.pool.ntp.org", "fetch": True},
     "ntp_server_2": {"entity": "text/Clock: NTP Server 2", "default": "1.pool.ntp.org", "fetch": True},
     "ntp_server_3": {"entity": "text/Clock: NTP Server 3", "default": "2.pool.ntp.org", "fetch": True},
