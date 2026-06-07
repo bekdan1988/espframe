@@ -41,62 +41,25 @@ class Commit:
     files: list[str] = field(default_factory=list)
 
 
-CATEGORIES = (
-    Category(
-        "Setup page and device web UI",
-        paths=("docs/webserver/", "docs/public/webserver/"),
-        keywords=(
-            "api key",
-            "backup",
-            "button",
-            "config",
-            "date filter",
-            "firmware",
-            "photo source",
-            "settings",
-            "setup",
-            "web ui",
-        ),
-    ),
-    Category(
-        "Immich slideshow and photo handling",
-        paths=(
-            "common/addon/immich_",
-            "devices/guition-esp32-p4-jc8012p4a1/device/screen_slideshow.yaml",
-            "components/remote_image/",
-        ),
-        keywords=("album", "immich", "photo", "slideshow", "timeline"),
-    ),
-    Category(
-        "Firmware and device behavior",
-        paths=("builds/", "common/addon/", "components/", "devices/"),
-        keywords=("backlight", "compile", "device", "esp32", "firmware", "lvgl", "screen", "wifi"),
-    ),
-    Category(
-        "Firmware releases and updates",
-        paths=(
-            ".github/workflows/docs.yml",
-            ".github/workflows/release.yml",
-            "common/addon/firmware_update.yaml",
-            "docs/firmware-update.md",
-            "scripts/firmware_release.py",
-            "scripts/check_firmware_release.py",
-        ),
-        keywords=("asset", "ota", "release", "tag", "update", "version"),
-    ),
-    Category(
-        "Documentation and install guide",
-        paths=("docs/", "README.md"),
-        keywords=("doc", "docs", "install", "readme", "troubleshooting", "usb"),
-    ),
-    Category(
-        "Build, tests, and maintenance",
-        paths=(".github/", ".agents/", "package.json", "package-lock.json", "renovate.json", "scripts/", "tests/"),
-        keywords=("ci", "check", "license", "maintenance", "refactor", "test"),
-    ),
-)
+def load_categories() -> tuple[Category, ...]:
+    categories = PROJECT.get("release_changelog_categories", [])
+    if not isinstance(categories, list):
+        return ()
+    result: list[Category] = []
+    for category in categories:
+        if not isinstance(category, dict):
+            continue
+        title = str(category.get("title", "")).strip()
+        if not title:
+            continue
+        paths = tuple(str(path) for path in category.get("paths", []) if str(path).strip())
+        keywords = tuple(str(keyword) for keyword in category.get("keywords", []) if str(keyword).strip())
+        result.append(Category(title, paths=paths, keywords=keywords))
+    return tuple(result)
 
-FALLBACK_CATEGORY = "Other changes"
+
+CATEGORIES = load_categories()
+FALLBACK_CATEGORY = str(PROJECT.get("release_changelog_fallback_category", "Other changes"))
 
 
 class ChangelogError(RuntimeError):

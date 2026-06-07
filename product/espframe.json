@@ -298,6 +298,46 @@
     "stable_release_version_pattern": "^v\\d+\\.\\d+\\.\\d+$",
     "firmware_version_placeholder_line": "  firmware_version: \"0.0.0\"",
     "firmware_placeholder_versions": ["dev", "0.0.0", "main"],
+    "release_changelog_categories": [
+      {
+        "title": "Setup page and device web UI",
+        "paths": ["docs/webserver/", "docs/public/webserver/"],
+        "keywords": ["api key", "backup", "button", "config", "date filter", "firmware", "photo source", "settings", "setup", "web ui"]
+      },
+      {
+        "title": "Immich slideshow and photo handling",
+        "paths": ["common/addon/immich_", "devices/guition-esp32-p4-jc8012p4a1/device/screen_slideshow.yaml", "components/remote_image/"],
+        "keywords": ["album", "immich", "photo", "slideshow", "timeline"]
+      },
+      {
+        "title": "Firmware and device behavior",
+        "paths": ["builds/", "common/addon/", "components/", "devices/"],
+        "keywords": ["backlight", "compile", "device", "esp32", "firmware", "lvgl", "screen", "wifi"]
+      },
+      {
+        "title": "Firmware releases and updates",
+        "paths": [
+          ".github/workflows/docs.yml",
+          ".github/workflows/release.yml",
+          "common/addon/firmware_update.yaml",
+          "docs/firmware-update.md",
+          "scripts/firmware_release.py",
+          "scripts/check_firmware_release.py"
+        ],
+        "keywords": ["asset", "ota", "release", "tag", "update", "version"]
+      },
+      {
+        "title": "Documentation and install guide",
+        "paths": ["docs/", "README.md"],
+        "keywords": ["doc", "docs", "install", "readme", "troubleshooting", "usb"]
+      },
+      {
+        "title": "Build, tests, and maintenance",
+        "paths": [".github/", ".agents/", "package.json", "package-lock.json", "renovate.json", "scripts/", "tests/"],
+        "keywords": ["ci", "check", "license", "maintenance", "refactor", "test"]
+      }
+    ],
+    "release_changelog_fallback_category": "Other changes",
     "docs_firmware_verify_retries": 10,
     "docs_firmware_verify_delay_seconds": 15,
     "docs_dist_artifact_name": "docs-dist",

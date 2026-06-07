@@ -604,6 +604,7 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
         "release_version_pattern",
         "stable_release_version_pattern",
         "firmware_version_placeholder_line",
+        "release_changelog_fallback_category",
         "public_base_url",
         "support_url",
         "support_button_image_url",
@@ -657,6 +658,27 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
         errors.append("project.firmware_placeholder_versions must only contain non-empty strings")
     elif "0.0.0" not in placeholder_versions:
         errors.append("project.firmware_placeholder_versions must include 0.0.0")
+    changelog_categories = project.get("release_changelog_categories", [])
+    if not isinstance(changelog_categories, list) or not changelog_categories:
+        errors.append("project.release_changelog_categories must be a non-empty list")
+    else:
+        seen_category_titles: set[str] = set()
+        for category in changelog_categories:
+            if not isinstance(category, dict):
+                errors.append("project.release_changelog_categories entries must be objects")
+                continue
+            title = str(category.get("title", "")).strip()
+            if not title:
+                errors.append("project.release_changelog_categories entry is missing title")
+            elif title in seen_category_titles:
+                errors.append(f"Duplicate release changelog category: {title}")
+            seen_category_titles.add(title)
+            for field in ("paths", "keywords"):
+                values = category.get(field, [])
+                if not isinstance(values, list) or not values:
+                    errors.append(f"project.release_changelog_categories.{title or '<missing>'}.{field} must be a non-empty list")
+                elif any(not isinstance(value, str) or not value.strip() for value in values):
+                    errors.append(f"project.release_changelog_categories.{title or '<missing>'}.{field} must only contain non-empty strings")
     for field in ("generated_asset_outputs", "generated_asset_sources", "web_template_placeholders", "web_local_state_keys"):
         values = project.get(field, [])
         if not isinstance(values, list) or not values:
@@ -2694,6 +2716,8 @@ def check_device_workflow_contract(product: dict, errors: list[str]) -> None:
     stable_release_version_pattern = str(project.get("stable_release_version_pattern", "")).strip()
     firmware_version_placeholder = str(project.get("firmware_version_placeholder_line", "")).rstrip("\n")
     placeholder_versions = [str(value).strip() for value in project.get("firmware_placeholder_versions", []) if str(value).strip()]
+    changelog_categories = project.get("release_changelog_categories", [])
+    changelog_fallback = str(project.get("release_changelog_fallback_category", "")).strip()
     docs_dist_artifact_name = str(project.get("docs_dist_artifact_name", "")).strip()
     docs_firmware_artifact_name = str(project.get("docs_firmware_artifact_name", "")).strip()
     docs_verify_retries = project.get("docs_firmware_verify_retries")
@@ -2742,6 +2766,10 @@ def check_device_workflow_contract(product: dict, errors: list[str]) -> None:
         require_contains(firmware_release_script, "release_version_pattern", "scripts/firmware_release.py", errors)
     if stable_release_version_pattern:
         require_contains(release_changelog_script, "stable_release_version_pattern", "scripts/release_changelog.py", errors)
+    if isinstance(changelog_categories, list) and changelog_categories:
+        require_contains(release_changelog_script, "release_changelog_categories", "scripts/release_changelog.py", errors)
+    if changelog_fallback:
+        require_contains(release_changelog_script, "release_changelog_fallback_category", "scripts/release_changelog.py", errors)
     if firmware_version_placeholder:
         require_contains(firmware_release_script, "firmware_version_placeholder_line", "scripts/firmware_release.py", errors)
         for device in product["devices"]:
