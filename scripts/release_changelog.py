@@ -15,9 +15,11 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from product_config import project_value
+
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_REPO_URL = "https://github.com/jtenniswood/espframe"
+DEFAULT_REPO_URL = project_value("repository_url", "https://github.com/jtenniswood/espframe")
 STABLE_TAG_RE = re.compile(r"^v\d+\.\d+\.\d+$")
 PR_RE = re.compile(r"\(#(?P<number>\d+)\)")
 

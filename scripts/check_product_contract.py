@@ -204,7 +204,7 @@ def check_devices(product: dict, errors: list[str]) -> None:
 
 def check_project_metadata(product: dict, errors: list[str]) -> None:
     project = product["project"]
-    for field in ("name", "package_name", "release_url_base", "public_base_url"):
+    for field in ("name", "package_name", "repository_url", "release_url_base", "public_base_url"):
         if not str(project.get(field, "")).strip():
             errors.append(f"project.{field} is required")
 
@@ -213,10 +213,15 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
         errors.append("project.package_name must look like a reverse-DNS package name")
 
     release_url_base = str(project.get("release_url_base", "")).strip()
+    repository_url = str(project.get("repository_url", "")).strip().rstrip("/")
+    if repository_url and not repository_url.startswith("https://github.com/"):
+        errors.append("project.repository_url must be an https GitHub URL")
     if release_url_base and not release_url_base.startswith("https://"):
         errors.append("project.release_url_base must be an https URL")
     if release_url_base and not release_url_base.endswith("/"):
         errors.append("project.release_url_base must end with /")
+    if repository_url and release_url_base and release_url_base != f"{repository_url}/releases/tag/":
+        errors.append("project.release_url_base must be based on project.repository_url")
 
     firmware_update = read(ROOT / "common" / "addon" / "firmware_update.yaml", errors)
     if package_name:
@@ -263,11 +268,16 @@ def check_public_site_references(product: dict, errors: list[str]) -> None:
     install_url = public_url("install", product)
     web_app_url = public_url("webserver/app.js", product)
     project_name = str(product["project"].get("name", "")).strip()
+    repository_url = str(product["project"].get("repository_url", "")).strip().rstrip("/")
 
     device_yaml = read(ROOT / "devices" / "guition-esp32-p4-jc8012p4a1" / "device" / "device.yaml", errors)
     robots = read(ROOT / "docs" / "public" / "robots.txt", errors)
     ai_txt = read(ROOT / "docs" / "public" / "ai.txt", errors)
     readme = read(ROOT / "README.md", errors)
+    manual_setup = read(ROOT / "docs" / "manual-setup.md", errors)
+    license_docs = read(ROOT / "docs" / "license.md", errors)
+    roadmap = read(ROOT / "docs" / "roadmap.md", errors)
+    release_changelog = read(ROOT / "scripts" / "release_changelog.py", errors)
 
     require_contains(device_yaml, f'js_url: "{web_app_url}"', "devices/guition-esp32-p4-jc8012p4a1/device/device.yaml", errors)
     require_contains(robots, f"Sitemap: {public_url('sitemap.xml', product)}", "docs/public/robots.txt", errors)
@@ -275,6 +285,12 @@ def check_public_site_references(product: dict, errors: list[str]) -> None:
     if project_name:
         require_contains(ai_txt, f"name: {project_name}", "docs/public/ai.txt", errors)
         require_contains(ai_txt, f'attribute to "{project_name}"', "docs/public/ai.txt", errors)
+    if repository_url:
+        require_contains(ai_txt, f"Source and issues: {repository_url}", "docs/public/ai.txt", errors)
+        require_contains(manual_setup, f"url: {repository_url}", "docs/manual-setup.md", errors)
+        require_contains(license_docs, f"({repository_url}/blob/main/LICENSE)", "docs/license.md", errors)
+        require_contains(roadmap, f"({repository_url}/issues)", "docs/roadmap.md", errors)
+        require_contains(release_changelog, 'project_value("repository_url"', "scripts/release_changelog.py", errors)
     require_contains(ai_txt, f"url: {docs_url}", "docs/public/ai.txt", errors)
     require_contains(ai_txt, f"Prefer canonical URLs: {docs_url} and {install_url}", "docs/public/ai.txt", errors)
     require_contains(ai_txt, f"Documentation: {docs_url}", "docs/public/ai.txt", errors)
