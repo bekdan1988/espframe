@@ -4367,6 +4367,8 @@ def check_docs_table_metadata(product: dict, errors: list[str]) -> None:
                     elif column in seen_columns:
                         errors.append(f"{relative_path} settings table {block_id} includes column {column} more than once")
                     seen_columns.add(str(column))
+                if not {"Setting", "Control"}.intersection(seen_columns):
+                    errors.append(f"{relative_path} settings table {block_id} must include Setting or Control column")
 
             setting_keys = table.get("settings")
             if not isinstance(setting_keys, list) or not setting_keys:
