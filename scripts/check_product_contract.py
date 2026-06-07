@@ -244,6 +244,8 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
         "usb_flashing_image",
         "usb_flashing_image_alt",
         "web_installer_required_api",
+        "immich_api_key_mode",
+        "immich_api_key_privacy_promise",
         "favicon",
         "npm_package_name",
         "license_id",
@@ -297,6 +299,26 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
             errors.append(f"project.{field} must be a non-empty list")
         elif any(not isinstance(value, str) or not value.strip() for value in values):
             errors.append(f"project.{field} must only contain non-empty strings")
+    permissions = project.get("immich_api_key_permissions", [])
+    if not isinstance(permissions, list) or not permissions:
+        errors.append("project.immich_api_key_permissions must be a non-empty list")
+    else:
+        seen_permissions: set[str] = set()
+        for permission in permissions:
+            if not isinstance(permission, dict):
+                errors.append("project.immich_api_key_permissions entries must be objects")
+                continue
+            name = str(permission.get("name", "")).strip()
+            purpose = str(permission.get("purpose", "")).strip()
+            if not name:
+                errors.append("project.immich_api_key_permissions entry is missing name")
+            elif name in seen_permissions:
+                errors.append(f"Duplicate Immich API key permission: {name}")
+            elif not re.match(r"^[a-z]+\.(read|view)$", name):
+                errors.append(f"Immich API key permission should be read/view-only: {name}")
+            seen_permissions.add(name)
+            if not purpose:
+                errors.append(f"Immich API key permission {name or '<missing>'} is missing purpose")
 
     firmware_update = read(ROOT / "common" / "addon" / "firmware_update.yaml", errors)
     if package_name:
@@ -346,6 +368,45 @@ def check_license_metadata(product: dict, errors: list[str]) -> None:
             require_contains(text, license_name, label, errors)
     if license_id:
         require_contains(read(ROOT / "package.json", errors), f'"license": "{license_id}"', "package.json", errors)
+
+
+def check_immich_api_key_metadata(product: dict, errors: list[str]) -> None:
+    project = product["project"]
+    mode = str(project.get("immich_api_key_mode", "")).strip()
+    privacy_promise = str(project.get("immich_api_key_privacy_promise", "")).strip()
+    permissions = project.get("immich_api_key_permissions", [])
+
+    api_key_docs = read(ROOT / "docs" / "api-key.md", errors)
+    troubleshooting_docs = read(ROOT / "docs" / "troubleshooting.md", errors)
+    immich_photo_frame_docs = read(ROOT / "docs" / "immich-photo-frame.md", errors)
+
+    if mode:
+        require_contains(api_key_docs, f"{mode} API key", "docs/api-key.md", errors)
+        require_contains(troubleshooting_docs, f"{mode} Immich API key", "docs/troubleshooting.md", errors)
+        require_contains(immich_photo_frame_docs, f"{mode.capitalize()} permissions are recommended", "docs/immich-photo-frame.md", errors)
+    if privacy_promise:
+        require_contains(api_key_docs, privacy_promise, "docs/api-key.md", errors)
+
+    if not isinstance(permissions, list):
+        return
+
+    expected_names: list[str] = []
+    for permission in permissions:
+        if not isinstance(permission, dict):
+            continue
+        name = str(permission.get("name", "")).strip()
+        purpose = str(permission.get("purpose", "")).strip()
+        if not name or not purpose:
+            continue
+        expected_names.append(name)
+        require_contains(api_key_docs, f"| `{name}` | {purpose} |", "docs/api-key.md", errors)
+
+    documented_names = re.findall(r"^\| `([^`]+)` \|", api_key_docs, flags=re.MULTILINE)
+    if documented_names != expected_names:
+        errors.append(
+            "docs/api-key.md permission rows must match project.immich_api_key_permissions "
+            f"(expected {expected_names}, found {documented_names})"
+        )
 
 
 def check_public_manifest_urls(product: dict, errors: list[str]) -> None:
@@ -1122,6 +1183,7 @@ def main() -> int:
     check_project_metadata(product, errors)
     check_npm_package_metadata(product, errors)
     check_license_metadata(product, errors)
+    check_immich_api_key_metadata(product, errors)
     check_devices(product, errors)
     check_public_manifest_urls(product, errors)
     check_public_site_references(product, errors)

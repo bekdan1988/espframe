@@ -10,6 +10,17 @@
     "web_installer_required_browsers": ["Chrome", "Edge"],
     "web_installer_required_api": "Web Serial",
     "web_installer_unsupported_browsers": ["Safari", "Firefox"],
+    "immich_api_key_mode": "read-only",
+    "immich_api_key_privacy_promise": "never modifies or uploads",
+    "immich_api_key_permissions": [
+      { "name": "asset.read", "purpose": "Search for random photos and read metadata (date, location, EXIF)" },
+      { "name": "asset.view", "purpose": "Download photo thumbnails for display" },
+      { "name": "person.read", "purpose": "Show people's names on the photo overlay" },
+      { "name": "album.read", "purpose": "Album names a photo belongs to" },
+      { "name": "tag.read", "purpose": "Tags assigned to photos" },
+      { "name": "memory.read", "purpose": "\"On this day\" memories and groupings" },
+      { "name": "map.read", "purpose": "Additional GPS/map data beyond EXIF" }
+    ],
     "favicon": "favicon.svg",
     "npm_package_name": "immich-frame",
     "license_id": "PolyForm-Noncommercial-1.0.0",
