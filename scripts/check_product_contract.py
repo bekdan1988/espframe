@@ -131,6 +131,9 @@ def check_setting(setting: dict, web_text: str, errors: list[str]) -> None:
                 if product_field in setting:
                     value = str(setting[product_field])
                     require_contains(text, f"{firmware_field}: {value}", f"{filename} {firmware_field} for {key}", errors)
+        if entity.get("domain") == "switch" and isinstance(raw_default, bool):
+            restore_mode = "RESTORE_DEFAULT_ON" if raw_default else "RESTORE_DEFAULT_OFF"
+            require_contains(text, f"restore_mode: {restore_mode}", f"{filename} restore_mode for {key}", errors)
 
     docs_files = setting.get("docs_files", [])
     if not docs_files:
