@@ -200,6 +200,19 @@
       "model": "Guition ESP32-P4 JC8012P4A1",
       "esp32_variant": "ESP32P4",
       "flash_size": "16MB",
+      "framework_type": "esp-idf",
+      "engineering_sample": true,
+      "idf_experimental_features": true,
+      "sdkconfig_options": {
+        "CONFIG_HTTPD_MAX_URI_LEN": "128",
+        "CONFIG_ESP_TASK_WDT_TIMEOUT_S": "30"
+      },
+      "platformio_flash_mode": "dio",
+      "platformio_build_flags": [
+        "-DCONFIG_COMPILER_OPTIMIZATION_PERF=y",
+        "-DLV_USE_BIDI=1",
+        "-DLV_USE_ARABIC_PERSIAN_CHARS=1"
+      ],
       "esp32_hosted_variant": "esp32c6",
       "psram_mode": "hex",
       "psram_speed": "200MHz",

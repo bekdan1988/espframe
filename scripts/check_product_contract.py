@@ -213,6 +213,8 @@ def check_devices(product: dict, errors: list[str]) -> None:
             "model",
             "esp32_variant",
             "flash_size",
+            "framework_type",
+            "platformio_flash_mode",
             "esp32_hosted_variant",
             "psram_mode",
             "psram_speed",
@@ -239,6 +241,23 @@ def check_devices(product: dict, errors: list[str]) -> None:
             value = device.get(field)
             if not isinstance(value, int) or isinstance(value, bool) or value < 1:
                 errors.append(f"Device {slug} {field} must be a positive integer")
+        for field in ("engineering_sample", "idf_experimental_features"):
+            if not isinstance(device.get(field), bool):
+                errors.append(f"Device {slug} {field} must be true or false")
+        sdkconfig_options = device.get("sdkconfig_options", {})
+        if not isinstance(sdkconfig_options, dict) or not sdkconfig_options:
+            errors.append(f"Device {slug} sdkconfig_options must be a non-empty object")
+        else:
+            for option, value in sdkconfig_options.items():
+                if not isinstance(option, str) or not option.strip():
+                    errors.append(f"Device {slug} sdkconfig_options keys must be non-empty strings")
+                if not isinstance(value, str) or not value.strip():
+                    errors.append(f"Device {slug} sdkconfig_options.{option} must be a non-empty string")
+        build_flags = device.get("platformio_build_flags", [])
+        if not isinstance(build_flags, list) or not build_flags:
+            errors.append(f"Device {slug} platformio_build_flags must be a non-empty list")
+        elif any(not isinstance(flag, str) or not flag.strip() for flag in build_flags):
+            errors.append(f"Device {slug} platformio_build_flags must only contain non-empty strings")
         hardware_pins = device.get("hardware_pins", {})
         if not isinstance(hardware_pins, dict) or not hardware_pins:
             errors.append(f"Device {slug} hardware_pins must be a non-empty object")
@@ -275,6 +294,8 @@ def check_devices(product: dict, errors: list[str]) -> None:
         for field, needle in (
             ("esp32_variant", f'variant: {device.get("esp32_variant", "")}'),
             ("flash_size", f'flash_size: {device.get("flash_size", "")}'),
+            ("framework_type", f'type: {device.get("framework_type", "")}'),
+            ("platformio_flash_mode", f'board_build.flash_mode: {device.get("platformio_flash_mode", "")}'),
             ("esp32_hosted_variant", f'variant: {device.get("esp32_hosted_variant", "")}'),
             ("psram_mode", f'mode: {device.get("psram_mode", "")}'),
             ("psram_speed", f'speed: {device.get("psram_speed", "")}'),
@@ -283,6 +304,20 @@ def check_devices(product: dict, errors: list[str]) -> None:
         ):
             if str(device.get(field, "")).strip():
                 require_contains(device_yaml, needle, rel(ROOT / device_yaml_path), errors)
+        for field, needle in (
+            ("engineering_sample", "engineering_sample: true"),
+            ("idf_experimental_features", "enable_idf_experimental_features: true"),
+        ):
+            if device.get(field) is True:
+                require_contains(device_yaml, needle, rel(ROOT / device_yaml_path), errors)
+        if isinstance(sdkconfig_options, dict):
+            for option, value in sdkconfig_options.items():
+                if isinstance(option, str) and isinstance(value, str) and option.strip() and value.strip():
+                    require_contains(device_yaml, f'{option}: "{value}"', rel(ROOT / device_yaml_path), errors)
+        if isinstance(build_flags, list):
+            for flag in build_flags:
+                if isinstance(flag, str) and flag.strip():
+                    require_contains(device_yaml, f'- "{flag}"', rel(ROOT / device_yaml_path), errors)
 
         native_width = device.get("display_native_width")
         native_height = device.get("display_native_height")
