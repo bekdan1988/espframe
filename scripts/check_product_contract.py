@@ -16,6 +16,7 @@ from pathlib import Path
 from product_config import (
     DOCS_SETTINGS_TABLES,
     load_product,
+    web_entity_aliases_metadata,
     web_initial_fetch_keys,
     web_settings_metadata,
     web_static_entities_metadata,
@@ -220,6 +221,10 @@ def check_generated_web_metadata(product: dict, web_text: str, errors: list[str]
     if static_entities is not None and static_entities != web_static_entities_metadata():
         errors.append("Generated web STATIC_ENTITIES does not match product_config.py")
 
+    entity_aliases = extract_js_json_var(web_text, "ENTITY_ALIASES", errors)
+    if entity_aliases is not None and entity_aliases != web_entity_aliases_metadata():
+        errors.append("Generated web ENTITY_ALIASES does not match product_config.py")
+
     initial_fetch_keys = extract_js_json_var(web_text, "INITIAL_FETCH_KEYS", errors)
     if initial_fetch_keys is not None and initial_fetch_keys != web_initial_fetch_keys(product["settings"]):
         errors.append("Generated web INITIAL_FETCH_KEYS does not match product/espframe.json")
@@ -360,6 +365,7 @@ def check_settings(product: dict, errors: list[str]) -> None:
     check_docs_table_markers(errors)
     require_contains(web_template, "__ESPFRAME_PRODUCT_SETTINGS__", rel(WEB_TEMPLATE), errors)
     require_contains(web_template, "__ESPFRAME_STATIC_ENTITIES__", rel(WEB_TEMPLATE), errors)
+    require_contains(web_template, "__ESPFRAME_ENTITY_ALIASES__", rel(WEB_TEMPLATE), errors)
     require_contains(web_template, "__ESPFRAME_INITIAL_FETCH_KEYS__", rel(WEB_TEMPLATE), errors)
     for needle in (
         "registerProductSettingStateDefaults",

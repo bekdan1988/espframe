@@ -29,6 +29,11 @@ WEB_STATIC_ENTITIES = {
     "developer_features_enabled": {"entity": "switch/Developer: Features", "boolFromState": True, "fetch": True},
     "show_clock": {"entity": "switch/Clock: Show", "boolFromState": True, "default": True},
 }
+WEB_ENTITY_ALIASES = {
+    "schedule_enabled": [{"entity": "switch/Screen: Schedule", "boolFromState": True}],
+    "schedule_on_hour": [{"entity": "number/Screen: Schedule On", "default": 6, "number": True}],
+    "schedule_off_hour": [{"entity": "number/Screen: Schedule Off", "default": 23, "number": True}],
+}
 DOCS_SETTINGS_TABLES = {
     ROOT / "docs" / "screen-settings.md": {
         "screen_brightness": {"settings": ["brightness_day", "brightness_night"]},
@@ -155,6 +160,10 @@ def web_static_entities_metadata() -> dict[str, dict[str, Any]]:
     for key, metadata in WEB_STATIC_ENTITIES.items():
         result[key] = {field: value for field, value in metadata.items() if field != "fetch"}
     return result
+
+
+def web_entity_aliases_metadata() -> dict[str, list[dict[str, Any]]]:
+    return {key: [dict(alias) for alias in aliases] for key, aliases in WEB_ENTITY_ALIASES.items()}
 
 
 def web_initial_fetch_keys(product_settings: list[dict[str, Any]] | None = None) -> list[str]:

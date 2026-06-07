@@ -5,6 +5,7 @@
   var TIMEZONE_LABELS = __ESPFRAME_TIMEZONE_LABELS__;
   var PRODUCT_SETTINGS = __ESPFRAME_PRODUCT_SETTINGS__;
   var STATIC_ENTITIES = __ESPFRAME_STATIC_ENTITIES__;
+  var ENTITY_ALIASES = __ESPFRAME_ENTITY_ALIASES__;
 
   var S = {
     tz_options: TIMEZONES,
@@ -574,10 +575,7 @@
   // Entity id -> state key mapping; optional optionsKey and default.
   var ENTITY_STATE_MAP = {
     "text/Connection: Server URL": { key: "immich_url" },
-    "text/Connection: API Key": { key: "api_key" },
-    "switch/Screen: Schedule": { key: "schedule_enabled", boolFromState: true },
-    "number/Screen: Schedule On": { key: "schedule_on_hour", default: 6, number: true },
-    "number/Screen: Schedule Off": { key: "schedule_off_hour", default: 23, number: true }
+    "text/Connection: API Key": { key: "api_key" }
   };
 
   function registerStaticEntities() {
@@ -608,6 +606,25 @@
 
   registerStaticEntities();
   registerProductSettingEntities();
+
+  function registerEntityAliases() {
+    if (!ENTITY_ALIASES) return;
+    Object.keys(ENTITY_ALIASES).forEach(function (key) {
+      var aliases = ENTITY_ALIASES[key];
+      if (!Array.isArray(aliases)) return;
+      aliases.forEach(function (aliasSpec) {
+        if (!aliasSpec || typeof aliasSpec.entity !== "string") return;
+        var stateSpec = { key: key };
+        if (aliasSpec.default !== undefined) stateSpec.default = aliasSpec.default;
+        if (aliasSpec.optionsKey) stateSpec.optionsKey = aliasSpec.optionsKey;
+        if (aliasSpec.boolFromState) stateSpec.boolFromState = true;
+        if (aliasSpec.number) stateSpec.number = true;
+        ENTITY_STATE_MAP[aliasSpec.entity] = stateSpec;
+      });
+    });
+  }
+
+  registerEntityAliases();
 
   function applyEntityToState(d) {
     if (!d || !d.id) return;

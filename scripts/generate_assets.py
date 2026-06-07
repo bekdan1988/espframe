@@ -19,6 +19,7 @@ from pathlib import Path
 from product_config import (
     DOCS_SETTINGS_TABLES,
     settings,
+    web_entity_aliases_metadata,
     web_initial_fetch_keys,
     web_settings_metadata,
     web_static_entities_metadata,
@@ -166,6 +167,7 @@ def web_app_bundle() -> str:
     timezone_labels_json = json.dumps(timezone_labels(), separators=(",", ":"))
     product_settings_json = json.dumps(web_settings_metadata(), separators=(",", ":"))
     static_entities_json = json.dumps(web_static_entities_metadata(), separators=(",", ":"))
+    entity_aliases_json = json.dumps(web_entity_aliases_metadata(), separators=(",", ":"))
     initial_fetch_keys_json = json.dumps(web_initial_fetch_keys(), separators=(",", ":"))
     css_json = json.dumps(css, separators=(",", ":"))
     return (
@@ -174,6 +176,7 @@ def web_app_bundle() -> str:
         .replace("__ESPFRAME_TIMEZONE_LABELS__", timezone_labels_json)
         .replace("__ESPFRAME_PRODUCT_SETTINGS__", product_settings_json)
         .replace("__ESPFRAME_STATIC_ENTITIES__", static_entities_json)
+        .replace("__ESPFRAME_ENTITY_ALIASES__", entity_aliases_json)
         .replace("__ESPFRAME_INITIAL_FETCH_KEYS__", initial_fetch_keys_json)
         .replace("__ESPFRAME_CSS__", css_json)
     )
