@@ -353,6 +353,14 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
                 errors.append("project.touch_controls entry is missing action")
             if not str(control.get("gesture", "")).strip():
                 errors.append("project.touch_controls entry is missing gesture")
+    for field in ("screen_brightness_day_night_source", "screen_schedule_behavior"):
+        if not str(project.get(field, "")).strip():
+            errors.append(f"project.{field} is required")
+    screen_schedule_effects = project.get("screen_schedule_off_effects", [])
+    if not isinstance(screen_schedule_effects, list) or not screen_schedule_effects:
+        errors.append("project.screen_schedule_off_effects must be a non-empty list")
+    elif any(not isinstance(value, str) or not value.strip() for value in screen_schedule_effects):
+        errors.append("project.screen_schedule_off_effects must only contain non-empty strings")
     permissions = project.get("immich_api_key_permissions", [])
     if not isinstance(permissions, list) or not permissions:
         errors.append("project.immich_api_key_permissions must be a non-empty list")
@@ -676,6 +684,57 @@ def check_touch_controls_metadata(product: dict, errors: list[str]) -> None:
         require_contains(backlight_schedule_yaml, needle, "common/addon/backlight_schedule.yaml", errors)
     for needle in ('name: "Screen: Sleep"', 'name: "Screen: Wake"'):
         require_contains(backlight_yaml, needle, "common/addon/backlight.yaml", errors)
+
+
+def check_screen_schedule_metadata(product: dict, errors: list[str]) -> None:
+    project = product["project"]
+    day_night_source = str(project.get("screen_brightness_day_night_source", "")).strip()
+    schedule_behavior = str(project.get("screen_schedule_behavior", "")).strip()
+    schedule_effects = project.get("screen_schedule_off_effects", [])
+
+    readme = read(ROOT / "README.md", errors)
+    index_docs = read(ROOT / "docs" / "index.md", errors)
+    screen_settings_docs = read(ROOT / "docs" / "screen-settings.md", errors)
+    backup_docs = read(ROOT / "docs" / "backup.md", errors)
+    backlight_schedule_yaml = read(ROOT / "common" / "addon" / "backlight_schedule.yaml", errors)
+    web_template = read(WEB_TEMPLATE, errors)
+
+    if day_night_source:
+        require_contains(screen_settings_docs, day_night_source, "docs/screen-settings.md", errors)
+        require_contains(backlight_schedule_yaml, day_night_source, "common/addon/backlight_schedule.yaml", errors)
+    if schedule_behavior:
+        require_contains(screen_settings_docs, schedule_behavior, "docs/screen-settings.md", errors)
+    if isinstance(schedule_effects, list):
+        for effect in schedule_effects:
+            if isinstance(effect, str) and effect.strip():
+                require_contains(screen_settings_docs, effect.strip(), "docs/screen-settings.md", errors)
+    for needle in (
+        "schedule the display to turn off overnight",
+        "brightness",
+        "screen tone",
+    ):
+        require_contains(readme, needle, "README.md", errors)
+    for needle in (
+        "Screen Scheduling",
+        "set daytime and night-time brightness levels separately",
+    ):
+        require_contains(index_docs, needle, "docs/index.md", errors)
+    for needle in (
+        "Daytime brightness",
+        "nighttime brightness",
+        "wake timeout",
+    ):
+        require_contains(backup_docs, needle, "docs/backup.md", errors)
+    for needle in (
+        "screen_schedule_sleep",
+        "screen_schedule_wake",
+        "screen_schedule_check",
+        "backlight_apply_brightness",
+        "backlight_recalc_sunrise_sunset",
+    ):
+        require_contains(backlight_schedule_yaml, needle, "common/addon/backlight_schedule.yaml", errors)
+    for key in ("schedule_enabled", "schedule_on_hour", "schedule_off_hour", "schedule_wake_timeout"):
+        require_contains(web_template, key, rel(WEB_TEMPLATE), errors)
 
 
 def check_public_manifest_urls(product: dict, errors: list[str]) -> None:
@@ -1485,6 +1544,7 @@ def main() -> int:
     check_backup_metadata(product, errors)
     check_privacy_metadata(product, errors)
     check_touch_controls_metadata(product, errors)
+    check_screen_schedule_metadata(product, errors)
     check_devices(product, errors)
     check_public_manifest_urls(product, errors)
     check_public_site_references(product, errors)

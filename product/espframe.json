@@ -52,6 +52,9 @@
       { "action": "Sleep", "gesture": "Press and hold for 3 seconds, then release" },
       { "action": "Next photo", "gesture": "Double-tap on the photo" }
     ],
+    "screen_brightness_day_night_source": "sunrise/sunset",
+    "screen_schedule_behavior": "turns the display fully off outside a time window",
+    "screen_schedule_off_effects": ["switches to a black page", "pauses LVGL", "turns the backlight light off", "forces the physical PWM output off"],
     "favicon": "favicon.svg",
     "npm_package_name": "immich-frame",
     "license_id": "PolyForm-Noncommercial-1.0.0",
