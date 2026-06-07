@@ -29,6 +29,13 @@ WEB_STYLE_PATH = WEB_SRC_DIR / "style.css"
 WEB_PUBLIC_STYLE_PATH = ROOT / "docs" / "public" / "webserver" / "style.css"
 WEB_APP_PATH = ROOT / "docs" / "public" / "webserver" / "app.js"
 
+WEB_OPTIONS_KEYS = {
+    "clock_format": "clock_options",
+    "interval": "interval_options",
+    "conn_timeout": "conn_timeout_options",
+    "update_frequency": "update_freq_options",
+}
+
 
 def load_timezones():
     spec = importlib.util.spec_from_file_location("espframe_timezones", TIMEZONES_PATH)
@@ -177,9 +184,12 @@ def web_product_settings() -> dict[str, dict[str, object]]:
         key = str(setting["key"])
         result[key] = {
             "entity": f'{entity["domain"]}/{entity["name"]}',
+            "domain": entity["domain"],
             "default": setting.get("default", ""),
             "options": setting.get("options", []),
         }
+        if setting.get("options"):
+            result[key]["optionsKey"] = WEB_OPTIONS_KEYS.get(key, f"{key}_options")
         for field in ("min", "max", "step"):
             if field in setting:
                 result[key][field] = setting[field]
