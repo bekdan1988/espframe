@@ -255,6 +255,8 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
         "home_assistant_integration_platform",
         "firmware_update_source",
         "firmware_beta_channel_label",
+        "backup_filename_prefix",
+        "backup_filename_date_format",
         "favicon",
         "npm_package_name",
         "license_id",
@@ -324,6 +326,15 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
         errors.append("project.home_assistant_integration_features must be a non-empty list")
     elif any(not isinstance(value, str) or not value.strip() for value in home_assistant_features):
         errors.append("project.home_assistant_integration_features must only contain non-empty strings")
+    if not isinstance(project.get("backup_config_version"), int) or isinstance(project.get("backup_config_version"), bool):
+        errors.append("project.backup_config_version must be an integer")
+    if not isinstance(project.get("backup_import_photo_id_limit"), int) or isinstance(project.get("backup_import_photo_id_limit"), bool):
+        errors.append("project.backup_import_photo_id_limit must be an integer")
+    backup_excluded_values = project.get("backup_excluded_runtime_values", [])
+    if not isinstance(backup_excluded_values, list) or not backup_excluded_values:
+        errors.append("project.backup_excluded_runtime_values must be a non-empty list")
+    elif any(not isinstance(value, str) or not value.strip() for value in backup_excluded_values):
+        errors.append("project.backup_excluded_runtime_values must only contain non-empty strings")
     permissions = project.get("immich_api_key_permissions", [])
     if not isinstance(permissions, list) or not permissions:
         errors.append("project.immich_api_key_permissions must be a non-empty list")
@@ -537,6 +548,48 @@ def check_firmware_update_metadata(product: dict, errors: list[str]) -> None:
         require_contains(firmware_yaml, url, "common/addon/firmware_update.yaml", errors)
         require_contains(web_text, url, rel(WEB_APP), errors)
         require_contains(web_template, f"FIRMWARE_MANIFEST_URLS.{label}", rel(WEB_TEMPLATE), errors)
+
+
+def check_backup_metadata(product: dict, errors: list[str]) -> None:
+    project = product["project"]
+    config_version = project.get("backup_config_version")
+    filename_prefix = str(project.get("backup_filename_prefix", "")).strip()
+    date_format = str(project.get("backup_filename_date_format", "")).strip()
+    photo_id_limit = project.get("backup_import_photo_id_limit")
+    excluded_values = project.get("backup_excluded_runtime_values", [])
+
+    backup_docs = read(ROOT / "docs" / "backup.md", errors)
+    web_template = read(WEB_TEMPLATE, errors)
+    web_text = read(WEB_APP, errors)
+
+    if isinstance(config_version, int) and not isinstance(config_version, bool):
+        require_contains(backup_docs, f'"version": {config_version}', "docs/backup.md", errors)
+        require_contains(web_template, f"version: {config_version}", rel(WEB_TEMPLATE), errors)
+        require_contains(web_text, f"version: {config_version}", rel(WEB_APP), errors)
+    if filename_prefix:
+        require_contains(backup_docs, f"`{filename_prefix}{date_format}.json`", "docs/backup.md", errors)
+        require_contains(web_template, f'var name = "{filename_prefix}"', rel(WEB_TEMPLATE), errors)
+        require_contains(web_text, f'var name = "{filename_prefix}"', rel(WEB_APP), errors)
+    if date_format:
+        require_contains(backup_docs, date_format, "docs/backup.md", errors)
+    if isinstance(photo_id_limit, int) and not isinstance(photo_id_limit, bool):
+        require_contains(backup_docs, f"{photo_id_limit} characters", "docs/backup.md", errors)
+        require_contains(web_template, f"MAX_PHOTO_ID_FIELD_LENGTH = {photo_id_limit}", rel(WEB_TEMPLATE), errors)
+        require_contains(web_text, f"MAX_PHOTO_ID_FIELD_LENGTH = {photo_id_limit}", rel(WEB_APP), errors)
+    if isinstance(excluded_values, list):
+        for value in excluded_values:
+            if isinstance(value, str) and value.strip():
+                require_contains(backup_docs, value.strip(), "docs/backup.md", errors)
+
+    for needle in (
+        "display_mode",
+        "display mode",
+        "Partial config files work",
+        "everything else stays unchanged",
+    ):
+        require_contains(backup_docs, needle, "docs/backup.md", errors)
+    require_contains(web_template, "display_mode: S.display_mode", rel(WEB_TEMPLATE), errors)
+    require_contains(web_template, "p.display_mode", rel(WEB_TEMPLATE), errors)
 
 
 def check_public_manifest_urls(product: dict, errors: list[str]) -> None:
@@ -1343,6 +1396,7 @@ def main() -> int:
     check_immich_connection_metadata(product, errors)
     check_home_assistant_metadata(product, errors)
     check_firmware_update_metadata(product, errors)
+    check_backup_metadata(product, errors)
     check_devices(product, errors)
     check_public_manifest_urls(product, errors)
     check_public_site_references(product, errors)
