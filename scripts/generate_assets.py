@@ -36,6 +36,21 @@ WEB_OPTIONS_KEYS = {
     "update_frequency": "update_freq_options",
 }
 
+WEB_INITIAL_FETCH_STATIC_KEYS = [
+    "firmware",
+    "timezone",
+    "ntp_server_1",
+    "ntp_server_2",
+    "ntp_server_3",
+    "album_ids",
+    "album_labels",
+    "person_ids",
+    "person_labels",
+    "sunrise",
+    "sunset",
+    "developer_features_enabled",
+]
+
 DOCS_SETTINGS_TABLES = {
     ROOT / "docs" / "screen-settings.md": {
         "screen_brightness": {"settings": ["brightness_day", "brightness_night"]},
@@ -226,12 +241,14 @@ def web_app_bundle() -> str:
     timezones_json = json.dumps(timezone_options(), separators=(",", ":"))
     timezone_labels_json = json.dumps(timezone_labels(), separators=(",", ":"))
     product_settings_json = json.dumps(web_product_settings(), separators=(",", ":"))
+    initial_fetch_keys_json = json.dumps(web_initial_fetch_keys(), separators=(",", ":"))
     css_json = json.dumps(css, separators=(",", ":"))
     return (
         template
         .replace("__ESPFRAME_TIMEZONES__", timezones_json)
         .replace("__ESPFRAME_TIMEZONE_LABELS__", timezone_labels_json)
         .replace("__ESPFRAME_PRODUCT_SETTINGS__", product_settings_json)
+        .replace("__ESPFRAME_INITIAL_FETCH_KEYS__", initial_fetch_keys_json)
         .replace("__ESPFRAME_CSS__", css_json)
     )
 
@@ -253,6 +270,21 @@ def web_product_settings() -> dict[str, dict[str, object]]:
             if field in setting:
                 result[key][field] = setting[field]
     return result
+
+
+def web_initial_fetch_keys() -> list[str]:
+    keys: list[str] = []
+
+    def add(key: str) -> None:
+        if key not in keys:
+            keys.append(key)
+
+    add("firmware")
+    for setting in settings():
+        add(str(setting["key"]))
+    for key in WEB_INITIAL_FETCH_STATIC_KEYS:
+        add(key)
+    return keys
 
 
 def setting_lookup() -> dict[str, dict[str, object]]:

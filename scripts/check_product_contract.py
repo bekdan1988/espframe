@@ -108,6 +108,7 @@ def check_setting(setting: dict, web_text: str, errors: list[str]) -> None:
     entity_id = f"{domain}/{name}"
     require_contains(web_text, f'"{entity_id}"', f"web UI mapping for {key}", errors)
     require_contains(web_text, key, f"web UI state key for {key}", errors)
+    require_contains(web_text, f'{key}: settingEndpoint("{key}"', f"web UI endpoint for {key}", errors)
     require_contains(web_text, web_default, f"web UI default for {key}", errors)
     for option in options:
         require_contains(web_text, option, f"web UI option for {key}", errors)
@@ -145,6 +146,7 @@ def check_setting(setting: dict, web_text: str, errors: list[str]) -> None:
 def check_settings(product: dict, errors: list[str]) -> None:
     web_text = read(WEB_APP, errors)
     require_contains(web_text, "__ESPFRAME_PRODUCT_SETTINGS__", rel(WEB_APP), errors)
+    require_contains(web_text, "__ESPFRAME_INITIAL_FETCH_KEYS__", rel(WEB_APP), errors)
     seen: set[str] = set()
     for setting in product["settings"]:
         key = str(setting.get("key", "")).strip()

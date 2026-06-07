@@ -753,25 +753,8 @@
     applyEntityToState(d);
   }
 
-  // Single source for settings fetched on load; KEY_TO_ENTITY_ID derived from ENTITY_STATE_MAP.
-  var INITIAL_FETCH_KEYS = [
-    "firmware", "auto_update", "beta_channel", "update_frequency",
-    "firmware_manifest_url", "firmware_beta_manifest_url",
-    "clock_format", "timezone", "ntp_server_1", "ntp_server_2", "ntp_server_3",
-    "photo_source", "album_ids", "album_labels", "person_ids", "person_labels",
-    "date_filter_enabled", "date_filter_mode", "date_from", "date_to", "relative_amount", "relative_unit",
-    "photo_orientation",
-    "interval", "conn_timeout",
-    "schedule_enabled", "schedule_on_hour", "schedule_off_hour", "schedule_wake_timeout",
-    "sunrise", "sunset",
-    "base_tone_enabled", "base_tone", "warm_tones_enabled", "warm_tone_intensity", "warm_tone_override",
-    "screen_rotation",
-    "portrait_pairing",
-    "display_mode",
-    "photo_metadata_date_enabled", "photo_metadata_date_format", "photo_metadata_date_taken_format",
-    "photo_metadata_location_enabled",
-    "developer_features_enabled"
-  ];
+  // Generated from product metadata plus status-only fields; KEY_TO_ENTITY_ID derived from ENTITY_STATE_MAP.
+  var INITIAL_FETCH_KEYS = ["firmware","photo_source","date_filter_mode","relative_unit","photo_orientation","display_mode","interval","conn_timeout","screen_rotation","photo_metadata_date_format","photo_metadata_date_taken_format","clock_format","update_frequency","auto_update","beta_channel","firmware_manifest_url","firmware_beta_manifest_url","date_filter_enabled","date_from","date_to","relative_amount","schedule_enabled","schedule_on_hour","schedule_off_hour","schedule_wake_timeout","brightness_day","brightness_night","base_tone_enabled","base_tone","warm_tones_enabled","warm_tone_intensity","warm_tone_override","portrait_pairing","photo_metadata_date_enabled","photo_metadata_location_enabled","timezone","ntp_server_1","ntp_server_2","ntp_server_3","album_ids","album_labels","person_ids","person_labels","sunrise","sunset","developer_features_enabled"];
   function getEntityIdForStateKey(key) {
     var productSpec = PRODUCT_SETTINGS && PRODUCT_SETTINGS[key];
     if (productSpec && typeof productSpec.entity === "string") return productSpec.entity;
@@ -787,7 +770,13 @@
   });
 
   function fetchDeviceSettingsState() {
-    var urls = INITIAL_FETCH_KEYS.map(function (k) { return safeGet(endpoints[k]); });
+    var urls = INITIAL_FETCH_KEYS.map(function (k) {
+      if (!endpoints[k]) {
+        console.error("Missing endpoint for startup setting:", k);
+        return Promise.resolve(null);
+      }
+      return safeGet(endpoints[k]);
+    });
     return Promise.all(urls).then(function (res) {
       for (var i = 0; i < res.length; i++) {
         var data = res[i];
