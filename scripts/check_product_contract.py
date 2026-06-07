@@ -630,6 +630,10 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
         "public_base_url",
         "support_url",
         "support_button_image_url",
+        "node_package_cache",
+        "node_install_command",
+        "local_check_command",
+        "docs_build_command",
         "github_docs_release_tag_env",
         "github_docs_release_tag_output",
         "github_docs_prerelease_tag_env",
@@ -3768,6 +3772,10 @@ def check_workflows(product: dict, errors: list[str]) -> None:
 
 def check_node_version(product: dict, errors: list[str]) -> None:
     version = str(product["project"].get("node_version", "")).strip()
+    package_cache = str(product["project"].get("node_package_cache", "")).strip()
+    install_command = str(product["project"].get("node_install_command", "")).strip()
+    local_check_command = str(product["project"].get("local_check_command", "")).strip()
+    docs_build_command = str(product["project"].get("docs_build_command", "")).strip()
     node24_env = str(product["project"].get("github_actions_node24_env", "")).strip()
     if not version:
         errors.append("project.node_version is required")
@@ -3781,8 +3789,19 @@ def check_node_version(product: dict, errors: list[str]) -> None:
     for path in node_workflow_paths:
         text = read(path, errors)
         require_contains(text, f"node-version: {version}", rel(path), errors)
+        if package_cache:
+            require_contains(text, f"cache: {package_cache}", rel(path), errors)
+        if install_command:
+            require_contains(text, f"run: {install_command}", rel(path), errors)
         if version == "24" and node24_env:
             require_contains(text, node24_env, rel(path), errors)
+
+    compile_workflow = read(ROOT / ".github" / "workflows" / "compile.yml", errors)
+    docs_workflow = read(ROOT / ".github" / "workflows" / "docs.yml", errors)
+    if local_check_command:
+        require_contains(compile_workflow, f"run: {local_check_command}", ".github/workflows/compile.yml", errors)
+    if docs_build_command:
+        require_contains(docs_workflow, f"run: {docs_build_command}", ".github/workflows/docs.yml", errors)
 
     if version == "24" and node24_env:
         release_workflow = read(ROOT / ".github" / "workflows" / "release.yml", errors)

@@ -436,6 +436,10 @@
     "support_url": "https://www.buymeacoffee.com/jtenniswood",
     "support_button_image_url": "https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png",
     "node_version": "24",
+    "node_package_cache": "npm",
+    "node_install_command": "npm ci",
+    "local_check_command": "npm run check:all",
+    "docs_build_command": "npm run docs:build",
     "github_actions_node24_env": "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24",
     "github_actions_runner": "ubuntu-latest",
     "github_cli_env": {
