@@ -28,6 +28,64 @@ WEB_INITIAL_FETCH_STATIC_KEYS = [
     "sunset",
     "developer_features_enabled",
 ]
+DOCS_SETTINGS_TABLES = {
+    ROOT / "docs" / "screen-settings.md": {
+        "screen_brightness": {"settings": ["brightness_day", "brightness_night"]},
+        "night_schedule": {
+            "settings": [
+                "schedule_enabled",
+                "schedule_on_hour",
+                "schedule_off_hour",
+                "schedule_wake_timeout",
+            ]
+        },
+        "screen_rotation": {"settings": ["screen_rotation"]},
+    },
+    ROOT / "docs" / "screen-tone.md": {
+        "screen_tone": {"settings": ["base_tone_enabled", "base_tone"]},
+        "night_tone": {"settings": ["warm_tones_enabled", "warm_tone_intensity"]},
+        "warm_tone_override": {"settings": ["warm_tone_override"]},
+    },
+    ROOT / "docs" / "photo-sources.md": {
+        "date_filtering": {
+            "columns": ["Setting", "Default", "Format", "Description"],
+            "settings": [
+                "date_filter_enabled",
+                "date_filter_mode",
+                "date_from",
+                "date_to",
+                "relative_amount",
+                "relative_unit",
+            ],
+        },
+        "layout": {
+            "settings": ["portrait_pairing", "photo_orientation", "display_mode"],
+        },
+        "metadata": {
+            "settings": [
+                "photo_metadata_location_enabled",
+                "photo_metadata_date_enabled",
+                "photo_metadata_date_format",
+                "photo_metadata_date_taken_format",
+            ],
+        },
+        "frequency": {
+            "settings": ["interval", "conn_timeout"],
+        },
+    },
+    ROOT / "docs" / "firmware-update.md": {
+        "firmware_controls": {
+            "columns": ["Control", "Type", "Default", "Description"],
+            "settings": [
+                "auto_update",
+                "beta_channel",
+                "update_frequency",
+                "firmware_manifest_url",
+                "firmware_beta_manifest_url",
+            ],
+        },
+    },
+}
 
 
 def load_product(path: Path = PRODUCT_PATH) -> dict[str, Any]:

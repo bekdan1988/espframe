@@ -13,7 +13,7 @@ import re
 import sys
 from pathlib import Path
 
-from product_config import load_product, web_initial_fetch_keys, web_settings_metadata
+from product_config import DOCS_SETTINGS_TABLES, load_product, web_initial_fetch_keys, web_settings_metadata
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -215,6 +215,24 @@ def check_generated_web_metadata(product: dict, web_text: str, errors: list[str]
         errors.append("Generated web INITIAL_FETCH_KEYS does not match product/espframe.json")
 
 
+def check_docs_table_membership(product: dict, errors: list[str]) -> None:
+    settings_by_key = {str(setting.get("key", "")): setting for setting in product["settings"]}
+    for path, table_blocks in DOCS_SETTINGS_TABLES.items():
+        relative_path = rel(path)
+        for block_id, table in table_blocks.items():
+            for key in [str(item) for item in table["settings"]]:
+                setting = settings_by_key.get(key)
+                if not setting:
+                    errors.append(f"{relative_path} settings table {block_id} references unknown setting {key}")
+                    continue
+                docs_files = [str(item) for item in setting.get("docs_files", [])]
+                if relative_path not in docs_files:
+                    errors.append(
+                        f"{relative_path} settings table {block_id} includes {key}, "
+                        f"but product docs_files does not include {relative_path}"
+                    )
+
+
 def check_setting(setting: dict, web_text: str, errors: list[str]) -> None:
     key = str(setting.get("key", "")).strip()
     entity = setting.get("entity") or {}
@@ -286,6 +304,7 @@ def check_settings(product: dict, errors: list[str]) -> None:
     web_template = read(WEB_TEMPLATE, errors)
     web_text = read(WEB_APP, errors)
     check_generated_web_metadata(product, web_text, errors)
+    check_docs_table_membership(product, errors)
     require_contains(web_template, "__ESPFRAME_PRODUCT_SETTINGS__", rel(WEB_TEMPLATE), errors)
     require_contains(web_template, "__ESPFRAME_INITIAL_FETCH_KEYS__", rel(WEB_TEMPLATE), errors)
     for needle in (
