@@ -255,6 +255,9 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
         "home_assistant_integration_platform",
         "firmware_update_source",
         "firmware_beta_channel_label",
+        "firmware_manual_check_behavior",
+        "firmware_beta_check_requirement",
+        "firmware_custom_manifest_requirement",
         "backup_filename_prefix",
         "backup_filename_date_format",
         "privacy_connection_model",
@@ -327,6 +330,15 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
             errors.append(f"project.{field} must be a non-empty list")
         elif any(not isinstance(value, str) or not value.strip() for value in values):
             errors.append(f"project.{field} must only contain non-empty strings")
+    frequency_hours = project.get("firmware_update_frequency_hours", {})
+    if not isinstance(frequency_hours, dict) or not frequency_hours:
+        errors.append("project.firmware_update_frequency_hours must be a non-empty object")
+    else:
+        for label, hours in frequency_hours.items():
+            if not isinstance(label, str) or not label.strip():
+                errors.append("project.firmware_update_frequency_hours keys must be non-empty strings")
+            if not isinstance(hours, int) or isinstance(hours, bool) or hours < 1:
+                errors.append(f"project.firmware_update_frequency_hours.{label} must be a positive integer")
     home_assistant_features = project.get("home_assistant_integration_features", [])
     if not isinstance(home_assistant_features, list) or not home_assistant_features:
         errors.append("project.home_assistant_integration_features must be a non-empty list")
@@ -612,6 +624,10 @@ def check_firmware_update_metadata(product: dict, errors: list[str]) -> None:
     source = str(project.get("firmware_update_source", "")).strip()
     channels = project.get("firmware_update_channels", [])
     beta_label = str(project.get("firmware_beta_channel_label", "")).strip()
+    manual_check_behavior = str(project.get("firmware_manual_check_behavior", "")).strip()
+    beta_check_requirement = str(project.get("firmware_beta_check_requirement", "")).strip()
+    custom_manifest_requirement = str(project.get("firmware_custom_manifest_requirement", "")).strip()
+    frequency_hours = project.get("firmware_update_frequency_hours", {})
     default_urls = default_public_manifest_urls(product)
 
     firmware_docs = read(ROOT / "docs" / "firmware-update.md", errors)
@@ -634,6 +650,50 @@ def check_firmware_update_metadata(product: dict, errors: list[str]) -> None:
     if beta_label:
         require_contains(firmware_docs, beta_label, "docs/firmware-update.md", errors)
         require_contains(web_template, beta_label.capitalize(), rel(WEB_TEMPLATE), errors)
+    if manual_check_behavior:
+        require_contains(firmware_docs, manual_check_behavior, "docs/firmware-update.md", errors)
+        require_contains(firmware_yaml, "manual_check_only", "common/addon/firmware_update.yaml", errors)
+        require_contains(firmware_yaml, "component.update: firmware_update", "common/addon/firmware_update.yaml", errors)
+        require_contains(web_template, 'post(endpoints.firmware_check + "/press")', rel(WEB_TEMPLATE), errors)
+    if beta_check_requirement:
+        require_contains(firmware_docs, beta_check_requirement, "docs/firmware-update.md", errors)
+        require_contains(firmware_yaml, "lambda: 'return id(beta_channel_switch).state;'", "common/addon/firmware_update.yaml", errors)
+        require_contains(web_template, "if (!S.beta_channel)", rel(WEB_TEMPLATE), errors)
+    if custom_manifest_requirement:
+        require_contains(firmware_docs, custom_manifest_requirement, "docs/firmware-update.md", errors)
+        require_contains(web_template, custom_manifest_requirement, rel(WEB_TEMPLATE), errors)
+        require_contains(firmware_yaml, "is_valid_http_url(url)", "common/addon/firmware_update.yaml", errors)
+        require_contains(firmware_yaml, "strip_trailing_slashes", "common/addon/firmware_update.yaml", errors)
+    if isinstance(frequency_hours, dict):
+        for label, hours in frequency_hours.items():
+            if not isinstance(label, str) or not isinstance(hours, int) or isinstance(hours, bool):
+                continue
+            require_contains(firmware_docs, label, "docs/firmware-update.md", errors)
+            if label == "Daily":
+                require_contains(firmware_yaml, f"int threshold = {hours}", "common/addon/firmware_update.yaml", errors)
+                require_contains(firmware_yaml, 'initial_option: "Daily"', "common/addon/firmware_update.yaml", errors)
+            else:
+                require_contains(firmware_yaml, f'freq == "{label}"', "common/addon/firmware_update.yaml", errors)
+            require_contains(firmware_yaml, f"threshold = {hours}", "common/addon/firmware_update.yaml", errors)
+    for needle in (
+        "update.perform: firmware_update",
+        "id(auto_update_switch).state && !id(manual_check_only)",
+        "id(beta_channel_switch).state",
+        "update_interval: never",
+    ):
+        require_contains(firmware_yaml, needle, "common/addon/firmware_update.yaml", errors)
+    for needle in (
+        "Auto updates",
+        "Disabled",
+        'productSettingOptions("update_frequency")',
+        "Check for Update",
+        "Install",
+        'post(endpoints.update + "/install")',
+        'post(endpoints.update_beta + "/install")',
+        "Stable Manifest URL",
+        "Beta Manifest URL",
+    ):
+        require_contains(web_template, needle, rel(WEB_TEMPLATE), errors)
     for label, url in default_urls.items():
         require_contains(firmware_docs, url, "docs/firmware-update.md", errors)
         require_contains(backup_docs, url, "docs/backup.md", errors)
