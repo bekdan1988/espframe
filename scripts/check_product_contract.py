@@ -640,6 +640,34 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
                 errors.append("project.release_workflow_actions keys must be non-empty strings")
             if not isinstance(action, str) or not action.strip():
                 errors.append(f"project.release_workflow_actions.{name} must be a non-empty string")
+    workflow_permissions = project.get("github_workflow_permissions", {})
+    expected_workflows = {"compile", "docs", "release"}
+    if not isinstance(workflow_permissions, dict) or not workflow_permissions:
+        errors.append("project.github_workflow_permissions must be a non-empty object")
+    else:
+        configured_workflows = {str(name).strip() for name in workflow_permissions}
+        missing_workflows = sorted(expected_workflows - configured_workflows)
+        extra_workflows = sorted(configured_workflows - expected_workflows)
+        if missing_workflows:
+            errors.append(f"project.github_workflow_permissions is missing workflows: {', '.join(missing_workflows)}")
+        if extra_workflows:
+            errors.append(f"project.github_workflow_permissions contains unknown workflows: {', '.join(extra_workflows)}")
+        for raw_name, permissions in workflow_permissions.items():
+            name = str(raw_name).strip()
+            if not name:
+                errors.append("project.github_workflow_permissions keys must be non-empty strings")
+            if not isinstance(permissions, dict) or not permissions:
+                errors.append(f"project.github_workflow_permissions.{name or '<missing>'} must be a non-empty object")
+                continue
+            for raw_scope, raw_access in permissions.items():
+                scope = str(raw_scope).strip()
+                access = str(raw_access).strip()
+                if not scope:
+                    errors.append(f"project.github_workflow_permissions.{name or '<missing>'} scopes must be non-empty strings")
+                if access not in {"read", "write", "none"}:
+                    errors.append(
+                        f"project.github_workflow_permissions.{name or '<missing>'}.{scope or '<missing>'} must be read, write, or none"
+                    )
     release_asset_suffixes = project.get("release_asset_suffixes", [])
     if not isinstance(release_asset_suffixes, list) or not release_asset_suffixes:
         errors.append("project.release_asset_suffixes must be a non-empty list")
@@ -3158,12 +3186,30 @@ def check_esphome_version(product: dict, errors: list[str]) -> None:
         require_contains(text, f"ghcr.io/esphome/esphome:{version}", rel(path), errors)
 
 
-def check_workflows(errors: list[str]) -> None:
+def check_workflows(product: dict, errors: list[str]) -> None:
     compile_workflow = read(ROOT / ".github" / "workflows" / "compile.yml", errors)
     require_contains(compile_workflow, '"product/**"', ".github/workflows/compile.yml", errors)
 
     docs_workflow = read(ROOT / ".github" / "workflows" / "docs.yml", errors)
     release_workflow = read(ROOT / ".github" / "workflows" / "release.yml", errors)
+    workflow_texts = {
+        "compile": (".github/workflows/compile.yml", compile_workflow),
+        "docs": (".github/workflows/docs.yml", docs_workflow),
+        "release": (".github/workflows/release.yml", release_workflow),
+    }
+    workflow_permissions = product["project"].get("github_workflow_permissions", {})
+    if isinstance(workflow_permissions, dict):
+        for workflow, raw_permissions in workflow_permissions.items():
+            workflow_name = str(workflow).strip()
+            if workflow_name not in workflow_texts or not isinstance(raw_permissions, dict):
+                continue
+            label, text = workflow_texts[workflow_name]
+            require_contains(text, "permissions:", label, errors)
+            for raw_scope, raw_access in raw_permissions.items():
+                scope = str(raw_scope).strip()
+                access = str(raw_access).strip()
+                if scope and access:
+                    require_contains(text, f"  {scope}: {access}", label, errors)
     for label, text in (
         (".github/workflows/docs.yml", docs_workflow),
         (".github/workflows/release.yml", release_workflow),
@@ -3713,7 +3759,7 @@ def main() -> int:
     check_external_components_metadata(product, errors)
     check_esphome_version(product, errors)
     check_node_version(product, errors)
-    check_workflows(errors)
+    check_workflows(product, errors)
     check_settings(product, errors)
 
     if errors:
