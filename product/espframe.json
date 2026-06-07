@@ -431,6 +431,10 @@
     "node_version": "24",
     "github_actions_node24_env": "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24",
     "github_actions_runner": "ubuntu-latest",
+    "github_cli_env": {
+      "GH_TOKEN": "${{ github.token }}",
+      "GH_REPO": "${{ github.repository }}"
+    },
     "github_workflow_permissions": {
       "compile": { "contents": "read" },
       "docs": { "contents": "read", "pages": "write", "id-token": "write" },

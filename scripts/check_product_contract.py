@@ -669,6 +669,25 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
                 errors.append(f"project.release_workflow_actions.{name} must be a non-empty string")
     workflow_permissions = project.get("github_workflow_permissions", {})
     expected_workflows = {"compile", "docs", "release"}
+    github_cli_env = project.get("github_cli_env", {})
+    expected_github_cli_env = {"GH_TOKEN", "GH_REPO"}
+    if not isinstance(github_cli_env, dict) or not github_cli_env:
+        errors.append("project.github_cli_env must be a non-empty object")
+    else:
+        configured_env = {str(name).strip() for name in github_cli_env}
+        missing_env = sorted(expected_github_cli_env - configured_env)
+        extra_env = sorted(configured_env - expected_github_cli_env)
+        if missing_env:
+            errors.append(f"project.github_cli_env is missing variables: {', '.join(missing_env)}")
+        if extra_env:
+            errors.append(f"project.github_cli_env contains unknown variables: {', '.join(extra_env)}")
+        for raw_name, raw_value in github_cli_env.items():
+            name = str(raw_name).strip()
+            value = str(raw_value).strip()
+            if not name:
+                errors.append("project.github_cli_env keys must be non-empty strings")
+            if not value:
+                errors.append(f"project.github_cli_env.{name or '<missing>'} must be a non-empty string")
     if not isinstance(workflow_permissions, dict) or not workflow_permissions:
         errors.append("project.github_workflow_permissions must be a non-empty object")
     else:
@@ -3016,6 +3035,7 @@ def check_device_workflow_contract(product: dict, errors: list[str]) -> None:
     docs_verify_retries = project.get("docs_firmware_verify_retries")
     docs_verify_delay = project.get("docs_firmware_verify_delay_seconds")
     actions_runner = str(project.get("github_actions_runner", "")).strip()
+    github_cli_env = project.get("github_cli_env", {})
     firmware_compile_timeout = project.get("firmware_compile_timeout_minutes")
     slugs = [str(device.get("slug", "")).strip() for device in product["devices"]]
     expected_slugs = " ".join(slugs)
@@ -3030,6 +3050,12 @@ def check_device_workflow_contract(product: dict, errors: list[str]) -> None:
         (".github/workflows/release.yml", release_workflow),
         (".github/workflows/docs.yml", docs_workflow),
     ):
+        if isinstance(github_cli_env, dict):
+            for raw_name, raw_value in github_cli_env.items():
+                name = str(raw_name).strip()
+                value = str(raw_value).strip()
+                if name and value:
+                    require_contains(text, f"{name}: {value}", label, errors)
         require_contains(text, f"DEVICE_SLUGS: {expected_slugs}", label, errors)
         if sparse_checkout_files:
             require_contains(text, "sparse-checkout: |", label, errors)
