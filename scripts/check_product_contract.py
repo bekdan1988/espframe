@@ -219,6 +219,9 @@ def check_devices(product: dict, errors: list[str]) -> None:
             "psram_mode",
             "psram_speed",
             "display_panel",
+            "lvgl_buffer_size",
+            "lvgl_byte_order",
+            "lvgl_rotation_substitution",
             "touch_platform",
             "build_yaml",
             "package_yaml",
@@ -244,6 +247,8 @@ def check_devices(product: dict, errors: list[str]) -> None:
         for field in ("engineering_sample", "idf_experimental_features"):
             if not isinstance(device.get(field), bool):
                 errors.append(f"Device {slug} {field} must be true or false")
+        if not isinstance(device.get("lvgl_resume_on_input"), bool):
+            errors.append(f"Device {slug} lvgl_resume_on_input must be true or false")
         sdkconfig_options = device.get("sdkconfig_options", {})
         if not isinstance(sdkconfig_options, dict) or not sdkconfig_options:
             errors.append(f"Device {slug} sdkconfig_options must be a non-empty object")
@@ -452,6 +457,24 @@ def check_devices(product: dict, errors: list[str]) -> None:
             for name, value in package_substitutions.items():
                 if isinstance(name, str) and isinstance(value, str) and name.strip() and value.strip():
                     require_contains(package_yaml, f'{name}: "{value}"', rel(ROOT / package_yaml_path), errors)
+        lvgl_base_include = package_include_paths.get("lvgl_base", "")
+        if lvgl_base_include:
+            lvgl_base_path = (package_dir / lvgl_base_include).resolve()
+            lvgl_base_label = rel(lvgl_base_path)
+            lvgl_base_yaml = read(lvgl_base_path, errors)
+            lvgl_buffer_size = str(device.get("lvgl_buffer_size", "")).strip()
+            lvgl_byte_order = str(device.get("lvgl_byte_order", "")).strip()
+            lvgl_rotation_substitution = str(device.get("lvgl_rotation_substitution", "")).strip()
+            if lvgl_buffer_size:
+                require_contains(lvgl_base_yaml, f"buffer_size: {lvgl_buffer_size}", lvgl_base_label, errors)
+            if lvgl_byte_order:
+                require_contains(lvgl_base_yaml, f"byte_order: {lvgl_byte_order}", lvgl_base_label, errors)
+            if lvgl_rotation_substitution:
+                require_contains(lvgl_base_yaml, f"rotation: ${{{lvgl_rotation_substitution}}}", lvgl_base_label, errors)
+            if device.get("lvgl_resume_on_input") is True:
+                require_contains(lvgl_base_yaml, "resume_on_input: true", lvgl_base_label, errors)
+            require_contains(lvgl_base_yaml, "displays:", lvgl_base_label, errors)
+            require_contains(lvgl_base_yaml, "- tft_display", lvgl_base_label, errors)
         fonts_include = package_include_paths.get("fonts", "")
         if fonts_include:
             fonts_label = rel((package_dir / fonts_include).resolve())
@@ -812,6 +835,11 @@ def check_project_metadata(product: dict, errors: list[str]) -> None:
         errors.append("project.immich_auth_error_status must be an integer")
     for field in (
         "setup_captive_portal_ip",
+        "setup_screen_dim_delay",
+        "setup_screen_dim_brightness",
+        "setup_screen_dim_transition",
+        "setup_loading_backlight_brightness",
+        "setup_loading_backlight_transition",
         "setup_connection_ready_condition",
         "manual_setup_package_ref",
         "manual_setup_package_refresh",
@@ -2030,6 +2058,11 @@ def check_setup_flow_metadata(product: dict, errors: list[str]) -> None:
         str(value).strip() for value in project.get("setup_skip_substitutions", []) if str(value).strip()
     ]
     ready_condition = str(project.get("setup_connection_ready_condition", "")).strip()
+    setup_dim_delay = str(project.get("setup_screen_dim_delay", "")).strip()
+    setup_dim_brightness = str(project.get("setup_screen_dim_brightness", "")).strip()
+    setup_dim_transition = str(project.get("setup_screen_dim_transition", "")).strip()
+    loading_backlight_brightness = str(project.get("setup_loading_backlight_brightness", "")).strip()
+    loading_backlight_transition = str(project.get("setup_loading_backlight_transition", "")).strip()
     required_substitutions = [
         str(value).strip() for value in project.get("manual_setup_required_substitutions", []) if str(value).strip()
     ]
@@ -2129,6 +2162,26 @@ def check_setup_flow_metadata(product: dict, errors: list[str]) -> None:
     ):
         require_contains(screen_loading_yaml, needle, "devices/guition-esp32-p4-jc8012p4a1/device/screen_loading.yaml", errors)
         require_contains(screen_wifi_yaml, needle, "devices/guition-esp32-p4-jc8012p4a1/device/screen_wifi_setup.yaml", errors)
+    if setup_dim_delay:
+        require_contains(screen_wifi_yaml, f"delay: {setup_dim_delay}", "devices/guition-esp32-p4-jc8012p4a1/device/screen_wifi_setup.yaml", errors)
+    if setup_dim_brightness:
+        require_contains(screen_wifi_yaml, f"brightness: {setup_dim_brightness}", "devices/guition-esp32-p4-jc8012p4a1/device/screen_wifi_setup.yaml", errors)
+    if setup_dim_transition:
+        require_contains(screen_wifi_yaml, f"transition_length: {setup_dim_transition}", "devices/guition-esp32-p4-jc8012p4a1/device/screen_wifi_setup.yaml", errors)
+    if loading_backlight_brightness:
+        require_contains(screen_loading_yaml, f"brightness: {loading_backlight_brightness}", "devices/guition-esp32-p4-jc8012p4a1/device/screen_loading.yaml", errors)
+    if loading_backlight_transition:
+        require_contains(screen_loading_yaml, f"transition_length: {loading_backlight_transition}", "devices/guition-esp32-p4-jc8012p4a1/device/screen_loading.yaml", errors)
+    for needle in (
+        "id: boot_grace_period",
+        "lv_bar_set_value(id(loading_progress_bar), 25, LV_ANIM_OFF)",
+        'lv_label_set_text(id(loading_status_label), "Initializing display")',
+        "lvgl.page.show: wifi_setup_page",
+        "script.execute: setup_screen_dim",
+        "script.stop: setup_screen_dim",
+        "script.execute: backlight_apply_brightness",
+    ):
+        require_contains(screen_loading_yaml + screen_wifi_yaml, needle, "setup screen firmware", errors)
     for needle in (
         "renderWizard",
         "connect your photo frame",
