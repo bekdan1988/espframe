@@ -8,6 +8,7 @@ local checks, and CI workflows can all read the same device and setting data.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -182,6 +183,40 @@ def default_public_manifest_urls(product: dict[str, Any] | None = None) -> dict[
     data = product if product is not None else load_product()
     first_device = data["devices"][0]
     return device_public_manifest_urls(data)[str(first_device["slug"])]
+
+
+def build_yaml_stem(build_yaml: str) -> str:
+    name = Path(build_yaml).name
+    if name.endswith(".factory.yaml"):
+        return name[: -len(".factory.yaml")]
+    if name.endswith(".yaml"):
+        return name[: -len(".yaml")]
+    return name
+
+
+def build_yaml_device_name(build_yaml: str) -> str:
+    path = ROOT / build_yaml
+    text = path.read_text()
+    match = re.search(r'(?m)^  name: "([^"]+)"$', text)
+    if not match:
+        raise RuntimeError(f"{path.relative_to(ROOT)} is missing substitutions.name")
+    return match.group(1)
+
+
+def release_matrix_devices(product: dict[str, Any] | None = None) -> list[dict[str, str]]:
+    data = product if product is not None else load_product()
+    result: list[dict[str, str]] = []
+    for device in data["devices"]:
+        build_yaml = str(device["build_yaml"])
+        result.append(
+            {
+                "slug": str(device["slug"]),
+                "yaml": build_yaml_stem(build_yaml),
+                "build_name": build_yaml_device_name(build_yaml),
+                "chip": str(device["chip"]),
+            }
+        )
+    return result
 
 
 def settings() -> list[dict[str, Any]]:

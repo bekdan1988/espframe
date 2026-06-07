@@ -24,6 +24,7 @@ from product_config import (
     device_public_manifest_urls,
     load_product,
     public_base_url,
+    release_matrix_devices,
     web_entity_aliases_metadata,
     web_initial_fetch_keys,
     web_manual_entities_metadata,
@@ -200,24 +201,6 @@ def check_devices(product: dict, errors: list[str]) -> None:
         read(build_yaml, errors)
 
 
-def build_yaml_stem(build_yaml: str) -> str:
-    name = Path(build_yaml).name
-    if name.endswith(".factory.yaml"):
-        return name[: -len(".factory.yaml")]
-    if name.endswith(".yaml"):
-        return name[: -len(".yaml")]
-    return name
-
-
-def build_yaml_device_name(path: Path, errors: list[str]) -> str:
-    text = read(path, errors)
-    match = re.search(r'(?m)^  name: "([^"]+)"$', text)
-    if not match:
-        errors.append(f"{rel(path)} is missing substitutions.name")
-        return ""
-    return match.group(1)
-
-
 def check_public_manifest_urls(product: dict, errors: list[str]) -> None:
     base_url = public_base_url(product)
     if not base_url.startswith("https://"):
@@ -264,18 +247,21 @@ def check_device_workflow_contract(product: dict, errors: list[str]) -> None:
     ):
         require_contains(text, f"DEVICE_SLUGS: {expected_slugs}", label, errors)
 
-    for device in product["devices"]:
-        slug = str(device.get("slug", "")).strip()
-        build_yaml = str(device.get("build_yaml", "")).strip()
-        yaml_stem = build_yaml_stem(build_yaml)
-        build_name = build_yaml_device_name(ROOT / build_yaml, errors)
-        chip = str(device.get("chip", "")).strip()
+    try:
+        release_devices = release_matrix_devices(product)
+    except RuntimeError as exc:
+        errors.append(str(exc))
+        return
 
+    devices_by_slug = {str(device.get("slug", "")).strip(): device for device in product["devices"]}
+    for release_device in release_devices:
+        slug = release_device["slug"]
+        build_yaml = str(devices_by_slug.get(slug, {}).get("build_yaml", "")).strip()
         for needle in (
             f"- slug: {slug}",
-            f"yaml: {yaml_stem}",
-            f"build_name: {build_name}",
-            f"chip: {chip}",
+            f"yaml: {release_device['yaml']}",
+            f"build_name: {release_device['build_name']}",
+            f"chip: {release_device['chip']}",
         ):
             require_contains(release_workflow, needle, ".github/workflows/release.yml", errors)
         require_contains(
