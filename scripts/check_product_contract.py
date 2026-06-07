@@ -13,27 +13,13 @@ import re
 import sys
 from pathlib import Path
 
-from product_config import load_product
+from product_config import load_product, web_initial_fetch_keys, web_settings_metadata
 
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB_TEMPLATE = ROOT / "docs" / "webserver" / "src" / "app.template.js"
 WEB_APP = ROOT / "docs" / "public" / "webserver" / "app.js"
 SETTING_DOMAINS = {"number", "select", "switch", "text"}
-WEB_INITIAL_FETCH_STATIC_KEYS = [
-    "firmware",
-    "timezone",
-    "ntp_server_1",
-    "ntp_server_2",
-    "ntp_server_3",
-    "album_ids",
-    "album_labels",
-    "person_ids",
-    "person_labels",
-    "sunrise",
-    "sunset",
-    "developer_features_enabled",
-]
 
 
 def rel(path: Path) -> str:
@@ -219,47 +205,13 @@ def check_workflows(errors: list[str]) -> None:
         require_contains(text, "product/espframe.json", label, errors)
 
 
-def expected_web_product_settings(product: dict) -> dict[str, dict[str, object]]:
-    result: dict[str, dict[str, object]] = {}
-    for setting in product["settings"]:
-        entity = setting["entity"]
-        key = str(setting["key"])
-        result[key] = {
-            "entity": f'{entity["domain"]}/{entity["name"]}',
-            "domain": entity["domain"],
-            "default": setting.get("default", ""),
-            "options": setting.get("options", []),
-        }
-        if setting.get("developer_options"):
-            result[key]["developerOptions"] = setting["developer_options"]
-        for field in ("min", "max", "step"):
-            if field in setting:
-                result[key][field] = setting[field]
-    return result
-
-
-def expected_initial_fetch_keys(product: dict) -> list[str]:
-    keys: list[str] = []
-
-    def add(key: str) -> None:
-        if key not in keys:
-            keys.append(key)
-
-    add("firmware")
-    for setting in product["settings"]:
-        add(str(setting["key"]))
-    for key in WEB_INITIAL_FETCH_STATIC_KEYS:
-        add(key)
-    return keys
-
-
 def check_generated_web_metadata(product: dict, web_text: str, errors: list[str]) -> None:
     product_settings = extract_js_json_var(web_text, "PRODUCT_SETTINGS", errors)
-    if product_settings is not None and product_settings != expected_web_product_settings(product):
+    if product_settings is not None and product_settings != web_settings_metadata(product["settings"]):
         errors.append("Generated web PRODUCT_SETTINGS does not match product/espframe.json")
 
     initial_fetch_keys = extract_js_json_var(web_text, "INITIAL_FETCH_KEYS", errors)
-    if initial_fetch_keys is not None and initial_fetch_keys != expected_initial_fetch_keys(product):
+    if initial_fetch_keys is not None and initial_fetch_keys != web_initial_fetch_keys(product["settings"]):
         errors.append("Generated web INITIAL_FETCH_KEYS does not match product/espframe.json")
 
 

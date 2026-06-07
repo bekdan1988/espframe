@@ -16,7 +16,7 @@ import re
 import sys
 from pathlib import Path
 
-from product_config import settings
+from product_config import settings, web_initial_fetch_keys, web_settings_metadata
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,21 +28,6 @@ WEB_TEMPLATE_PATH = WEB_SRC_DIR / "app.template.js"
 WEB_STYLE_PATH = WEB_SRC_DIR / "style.css"
 WEB_PUBLIC_STYLE_PATH = ROOT / "docs" / "public" / "webserver" / "style.css"
 WEB_APP_PATH = ROOT / "docs" / "public" / "webserver" / "app.js"
-
-WEB_INITIAL_FETCH_STATIC_KEYS = [
-    "firmware",
-    "timezone",
-    "ntp_server_1",
-    "ntp_server_2",
-    "ntp_server_3",
-    "album_ids",
-    "album_labels",
-    "person_ids",
-    "person_labels",
-    "sunrise",
-    "sunset",
-    "developer_features_enabled",
-]
 
 DOCS_SETTINGS_TABLES = {
     ROOT / "docs" / "screen-settings.md": {
@@ -233,7 +218,7 @@ def web_app_bundle() -> str:
     css = WEB_STYLE_PATH.read_text().rstrip("\n")
     timezones_json = json.dumps(timezone_options(), separators=(",", ":"))
     timezone_labels_json = json.dumps(timezone_labels(), separators=(",", ":"))
-    product_settings_json = json.dumps(web_product_settings(), separators=(",", ":"))
+    product_settings_json = json.dumps(web_settings_metadata(), separators=(",", ":"))
     initial_fetch_keys_json = json.dumps(web_initial_fetch_keys(), separators=(",", ":"))
     css_json = json.dumps(css, separators=(",", ":"))
     return (
@@ -244,40 +229,6 @@ def web_app_bundle() -> str:
         .replace("__ESPFRAME_INITIAL_FETCH_KEYS__", initial_fetch_keys_json)
         .replace("__ESPFRAME_CSS__", css_json)
     )
-
-
-def web_product_settings() -> dict[str, dict[str, object]]:
-    result: dict[str, dict[str, object]] = {}
-    for setting in settings():
-        entity = setting["entity"]
-        key = str(setting["key"])
-        result[key] = {
-            "entity": f'{entity["domain"]}/{entity["name"]}',
-            "domain": entity["domain"],
-            "default": setting.get("default", ""),
-            "options": setting.get("options", []),
-        }
-        if setting.get("developer_options"):
-            result[key]["developerOptions"] = setting["developer_options"]
-        for field in ("min", "max", "step"):
-            if field in setting:
-                result[key][field] = setting[field]
-    return result
-
-
-def web_initial_fetch_keys() -> list[str]:
-    keys: list[str] = []
-
-    def add(key: str) -> None:
-        if key not in keys:
-            keys.append(key)
-
-    add("firmware")
-    for setting in settings():
-        add(str(setting["key"]))
-    for key in WEB_INITIAL_FETCH_STATIC_KEYS:
-        add(key)
-    return keys
 
 
 def setting_lookup() -> dict[str, dict[str, object]]:

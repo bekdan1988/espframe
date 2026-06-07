@@ -14,6 +14,20 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 PRODUCT_PATH = ROOT / "product" / "espframe.json"
+WEB_INITIAL_FETCH_STATIC_KEYS = [
+    "firmware",
+    "timezone",
+    "ntp_server_1",
+    "ntp_server_2",
+    "ntp_server_3",
+    "album_ids",
+    "album_labels",
+    "person_ids",
+    "person_labels",
+    "sunrise",
+    "sunset",
+    "developer_features_enabled",
+]
 
 
 def load_product(path: Path = PRODUCT_PATH) -> dict[str, Any]:
@@ -52,3 +66,37 @@ def devices_by_slug() -> dict[str, dict[str, Any]]:
 
 def settings() -> list[dict[str, Any]]:
     return list(load_product()["settings"])
+
+
+def web_settings_metadata(product_settings: list[dict[str, Any]] | None = None) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for setting in product_settings if product_settings is not None else settings():
+        entity = setting["entity"]
+        key = str(setting["key"])
+        result[key] = {
+            "entity": f'{entity["domain"]}/{entity["name"]}',
+            "domain": entity["domain"],
+            "default": setting.get("default", ""),
+            "options": setting.get("options", []),
+        }
+        if setting.get("developer_options"):
+            result[key]["developerOptions"] = setting["developer_options"]
+        for field in ("min", "max", "step"):
+            if field in setting:
+                result[key][field] = setting[field]
+    return result
+
+
+def web_initial_fetch_keys(product_settings: list[dict[str, Any]] | None = None) -> list[str]:
+    keys: list[str] = []
+
+    def add(key: str) -> None:
+        if key not in keys:
+            keys.append(key)
+
+    add("firmware")
+    for setting in product_settings if product_settings is not None else settings():
+        add(str(setting["key"]))
+    for key in WEB_INITIAL_FETCH_STATIC_KEYS:
+        add(key)
+    return keys
