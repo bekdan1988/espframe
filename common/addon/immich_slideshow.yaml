@@ -117,6 +117,9 @@ globals:
   - id: photo_source_swipe_triggered
     type: bool
     initial_value: 'false'
+  - id: photo_source_menu_touch_handled
+    type: bool
+    initial_value: 'false'
   - id: photo_source_menu_selection_index
     type: int
     initial_value: '0'
