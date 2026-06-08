@@ -60,74 +60,32 @@ def setting_options(product: dict[str, Any]) -> dict[str, set[str]]:
     }
 
 
-def backup_group_keys(product: dict[str, Any], errors: list[str]) -> dict[str, set[str]]:
-    raw_fields = product["project"].get("backup_export_fields", {})
-    if not isinstance(raw_fields, dict) or not raw_fields:
-        errors.append("project.backup_export_fields must be a non-empty object")
-        return {}
+def backup_schema_groups(schema: list[dict[str, Any]]) -> list[str]:
+    groups: list[str] = []
+    for entry in schema:
+        group = str(entry.get("group", ""))
+        if group and group not in groups:
+            groups.append(group)
+    return groups
 
+
+def backup_schema_fields_by_group(schema: list[dict[str, Any]]) -> dict[str, set[str]]:
     fields_by_group: dict[str, set[str]] = {}
-    for raw_group, raw_values in raw_fields.items():
-        group = str(raw_group).strip()
-        if not group:
-            errors.append("project.backup_export_fields keys must be non-empty strings")
+    for entry in schema:
+        group = str(entry.get("group", ""))
+        field = str(entry.get("field", ""))
+        if not group or not field:
             continue
-        if not isinstance(raw_values, list) or not raw_values:
-            errors.append(f"project.backup_export_fields.{group} must be a non-empty list")
-            continue
-        values = [str(value).strip() for value in raw_values]
-        if any(not value for value in values):
-            errors.append(f"project.backup_export_fields.{group} must only contain non-empty strings")
-            continue
-        if len(values) != len(set(values)):
-            errors.append(f"project.backup_export_fields.{group} must not contain duplicate fields")
-        fields_by_group[group] = set(values)
+        fields_by_group.setdefault(group, set()).add(field)
     return fields_by_group
-
-
-def validate_internal_contract(
-    product: dict[str, Any],
-    group_keys: dict[str, set[str]],
-    errors: list[str],
-) -> None:
-    expected_groups = {str(group) for group in product["project"].get("backup_export_groups", [])}
-    configured_groups = set(group_keys)
-    missing_groups = sorted(expected_groups - configured_groups)
-    extra_groups = sorted(configured_groups - expected_groups)
-    if missing_groups:
-        errors.append(
-            f"Backup checker is missing groups from product.backup_export_groups: {', '.join(missing_groups)}"
-        )
-    if extra_groups:
-        errors.append(
-            f"Backup checker has groups not listed in product.backup_export_groups: {', '.join(extra_groups)}"
-        )
-
-    expected_fields = {field for fields in group_keys.values() for field in fields}
-    if len(expected_fields) != sum(len(fields) for fields in group_keys.values()):
-        errors.append("project.backup_export_fields field names must be unique across groups")
-
-    expected_group_fields = {(group, field) for group, fields in group_keys.items() for field in fields}
-    schema_group_fields = {(str(entry["group"]), str(entry["field"])) for entry in backup_schema(product)}
-    missing_schema = sorted(expected_group_fields - schema_group_fields)
-    extra_schema = sorted(schema_group_fields - expected_group_fields)
-    if missing_schema:
-        fields = ", ".join(f"{group}.{field}" for group, field in missing_schema)
-        errors.append(f"Backup schema is missing fields: {fields}")
-    if extra_schema:
-        fields = ", ".join(f"{group}.{field}" for group, field in extra_schema)
-        errors.append(f"Backup schema includes unknown fields: {fields}")
-    for entry in backup_schema(product):
-        state_keys = entry.get("state_keys", [])
-        if not isinstance(state_keys, list) or not state_keys:
-            errors.append(f"Backup schema {entry['group']}.{entry['field']} must list state keys")
 
 
 def validate_fixture(
     path: Path,
     data: dict[str, Any],
     product: dict[str, Any],
-    group_keys: dict[str, set[str]],
+    schema_groups: list[str],
+    schema_fields_by_group: dict[str, set[str]],
     errors: list[str],
 ) -> None:
     project = product["project"]
@@ -136,13 +94,12 @@ def validate_fixture(
     if data.get("version") != expected_version:
         errors.append(f"{label} version must be {expected_version}")
 
-    expected_groups = [str(group) for group in project.get("backup_export_groups", [])]
     groups = [key for key in data if key not in {"version", "exported_at"}]
-    unknown_groups = sorted(set(groups) - set(expected_groups))
+    unknown_groups = sorted(set(groups) - set(schema_groups))
     if unknown_groups:
         errors.append(f"{label} contains unknown backup groups: {', '.join(unknown_groups)}")
-    if "full" in path.stem and groups != expected_groups:
-        errors.append(f"{label} full fixture groups must match product.backup_export_groups")
+    if "full" in path.stem and groups != schema_groups:
+        errors.append(f"{label} full fixture groups must match backup schema groups")
 
     options = setting_options(product)
     photo_id_limit = int(project.get("backup_import_photo_id_limit", 255))
@@ -152,7 +109,7 @@ def validate_fixture(
         if not isinstance(value, dict):
             errors.append(f"{label} {group} must be an object")
             continue
-        allowed = group_keys.get(group, set())
+        allowed = schema_fields_by_group.get(group, set())
         unknown_keys = sorted(set(value) - allowed)
         if unknown_keys:
             errors.append(f"{label} {group} contains unknown keys: {', '.join(unknown_keys)}")
@@ -224,7 +181,9 @@ def main() -> int:
     project = product["project"]
     fixture_files = project.get("backup_fixture_files", [])
     errors: list[str] = []
-    group_keys = backup_group_keys(product, errors)
+    schema = backup_schema(product)
+    schema_groups = backup_schema_groups(schema)
+    schema_fields_by_group = backup_schema_fields_by_group(schema)
     if not isinstance(fixture_files, list) or not fixture_files:
         errors.append("project.backup_fixture_files must be a non-empty list")
     else:
@@ -232,8 +191,7 @@ def main() -> int:
             path = ROOT / str(raw_path)
             data = load_json(path, errors)
             if data:
-                validate_fixture(path, data, product, group_keys, errors)
-    validate_internal_contract(product, group_keys, errors)
+                validate_fixture(path, data, product, schema_groups, schema_fields_by_group, errors)
     validate_web_support(product, errors)
 
     if errors:

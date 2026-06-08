@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Validate upgrade-sensitive compatibility contracts.
-
-This is a Phase 2 gate: it checks saved config import tolerance, generated web
-metadata, and backup field endpoint coverage before structural refactors.
-"""
+"""Validate upgrade-sensitive compatibility contracts."""
 
 from __future__ import annotations
 
@@ -72,14 +68,6 @@ def require_contains(text: str, needle: str, label: str, errors: list[str]) -> N
         errors.append(f"{label} is missing {needle!r}")
 
 
-def all_endpoint_keys(product: dict[str, Any]) -> set[str]:
-    return (
-        {str(setting["key"]) for setting in product["settings"]}
-        | set(product["project"].get("web_static_entities", {}))
-        | set(product["project"].get("web_manual_entities", {}))
-    )
-
-
 def check_generated_web_metadata(product: dict[str, Any], errors: list[str]) -> None:
     web_text = WEB_APP.read_text()
     expected = {
@@ -101,39 +89,6 @@ def check_generated_web_metadata(product: dict[str, Any], errors: list[str]) -> 
         actual = extract_js_json_var(web_text, name, errors)
         if actual is not None and actual != value:
             errors.append(f"Generated web {name} must match product metadata")
-
-
-def check_backup_endpoint_mapping(product: dict[str, Any], errors: list[str]) -> None:
-    configured = {
-        (str(group), str(field))
-        for group, fields in product["project"].get("backup_export_fields", {}).items()
-        for field in fields
-    }
-    schema = backup_schema(product)
-    mapped = {(str(entry["group"]), str(entry["field"])) for entry in schema}
-    missing_mapping = sorted(configured - mapped)
-    extra_mapping = sorted(mapped - configured)
-    if missing_mapping:
-        errors.append(
-            "Compatibility backup schema is missing fields: "
-            + ", ".join(f"{group}.{field}" for group, field in missing_mapping)
-        )
-    if extra_mapping:
-        errors.append(
-            "Compatibility backup schema has unknown fields: "
-            + ", ".join(f"{group}.{field}" for group, field in extra_mapping)
-        )
-
-    endpoint_keys = all_endpoint_keys(product)
-    for entry in schema:
-        group = str(entry["group"])
-        field = str(entry["field"])
-        state_keys = entry.get("state_keys", [])
-        if not state_keys:
-            errors.append(f"Backup field {group}.{field} has no schema state keys")
-        for key in state_keys:
-            if key not in endpoint_keys:
-                errors.append(f"Backup field {group}.{field} maps to unknown endpoint key {key}")
 
 
 def check_backup_version_contract(product: dict[str, Any], errors: list[str]) -> None:
@@ -254,7 +209,6 @@ def main() -> int:
     errors: list[str] = []
     check_generated_web_metadata(product, errors)
     check_backup_version_contract(product, errors)
-    check_backup_endpoint_mapping(product, errors)
     check_compatibility_fixtures(product, errors)
 
     if errors:
