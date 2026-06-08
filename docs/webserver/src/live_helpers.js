@@ -99,8 +99,7 @@
     var current = opts.current !== undefined ? opts.current : S[key];
     f.appendChild(
       selectFromOptions(productSettingOptions(key, opts.includeDeveloper), current, function (v) {
-        S[key] = v;
-        post(endpoints[key] + "/set", { option: v });
+        saveSetting(key, v);
         if (opts.onChange) opts.onChange(v);
       }, opts.optionDisplayFn)
     );
@@ -232,7 +231,7 @@
       var serverInput = input("text", S[spec.key], spec.placeholder, MAX_NTP_SERVER_LENGTH);
       serverInput.setAttribute("aria-label", spec.label);
       serverInput.onchange = function () {
-        saveNtpServer(spec.key, serverInput.value);
+        saveSetting(spec.key, serverInput.value);
         serverInput.value = S[spec.key];
       };
       list.appendChild(serverInput);

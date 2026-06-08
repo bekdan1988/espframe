@@ -29,6 +29,7 @@ for (const [placeholder, filename] of Object.entries(modules)) {
 assert.equal(/__ESPFRAME_[A-Z0-9_]+__/.test(publicApp), false, "public app must not contain generator placeholders");
 assert.ok(publicApp.includes("function renderSettings()"), "public app should include the settings renderer");
 assert.ok(publicApp.includes("function importConfig()"), "public app should include backup import behavior");
+assert.ok(publicApp.includes("var BACKUP_CONFIG_VERSION = "), "public app should include generated backup version");
 assert.ok(publicApp.includes("var BACKUP_SCHEMA = "), "public app should include generated backup schema");
 assert.ok(publicApp.includes("function renderWizard()"), "public app should include the startup wizard");
 

@@ -19,6 +19,22 @@
     return entityStringParts(spec && spec.entity);
   }
 
+  function settingEntityParts(key) {
+    var parts = productSettingEntityParts(key);
+    if (!parts && STATIC_ENTITIES && STATIC_ENTITIES[key]) {
+      parts = entityStringParts(STATIC_ENTITIES[key].entity);
+    }
+    if (!parts && MANUAL_ENTITIES && MANUAL_ENTITIES[key]) {
+      parts = entityStringParts(MANUAL_ENTITIES[key].entity);
+    }
+    return parts;
+  }
+
+  function settingEntityDomain(key) {
+    var parts = settingEntityParts(key);
+    return parts && parts.domain ? parts.domain : "";
+  }
+
   var endpoints = {};
 
   function registerManualEntityEndpoints() {
@@ -61,9 +77,4 @@
       console.error("POST " + fullUrl + " error:", err);
       showBanner("Failed to save setting", "error");
     });
-  }
-
-  function postScheduleWakeTimeout(value) {
-    var seconds = normalizeScheduleWakeTimeout(value);
-    post(endpoints.schedule_wake_timeout + "/set", { value: seconds });
   }

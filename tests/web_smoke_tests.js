@@ -75,12 +75,46 @@ const rejectedBackupFixture = {
   },
 };
 
+const partialBackupFixture = {
+  version: 1,
+  connection: {
+    immich_url: "https://partial-import.photos.example.com",
+  },
+  photos: {
+    album_ids: "not-an-album-uuid",
+  },
+};
+
+const missingVersionBackupFixture = {
+  photos: {
+    source: "Album",
+  },
+};
+
+const futureVersionBackupFixture = {
+  version: 2,
+  connection: {
+    immich_url: "https://future.photos.example.com",
+  },
+};
+
+const unsupportedVersionBackupFixture = {
+  version: 0,
+  connection: {
+    immich_url: "https://unsupported.photos.example.com",
+  },
+};
+
 const scenarios = [
   { name: "wizard", configured: false, width: 1280, height: 900 },
   { name: "settings", configured: true, width: 1280, height: 900 },
   { name: "settings-mobile", configured: true, width: 390, height: 900 },
   { name: "backup-import-success", configured: true, width: 1280, height: 900, importFixture: validBackupFixture },
+  { name: "backup-import-partial", configured: true, width: 1280, height: 900, importFixture: partialBackupFixture },
   { name: "backup-import-rejected", configured: true, width: 1280, height: 900, importFixture: rejectedBackupFixture },
+  { name: "backup-import-missing-version", configured: true, width: 1280, height: 900, importFixture: missingVersionBackupFixture },
+  { name: "backup-import-future-version", configured: true, width: 1280, height: 900, importFixture: futureVersionBackupFixture },
+  { name: "backup-import-unsupported-version", configured: true, width: 1280, height: 900, importFixture: unsupportedVersionBackupFixture },
 ];
 
 function browserScriptForScenario(scenario) {
@@ -386,12 +420,39 @@ function smokeAssertionsForScenario(scenario) {
             requirePostContains("Import normalized schedule setting", "Screen: Schedule Wake Timeout", "value=120");
           }
 
+          if (${JSON.stringify(scenario.name)} === "backup-import-partial") {
+            clickButton("Import");
+            await waitFor(() => pageText().indexOf("Imported with 1 skipped setting") !== -1, 8000, "partial import");
+            requirePostContains("Partial import text field", "Connection: Server URL");
+            if (window.__smoke.posts.some((url) => url.indexOf("Photos: Album IDs") !== -1)) {
+              throw new Error("Skipped album IDs were posted to the device");
+            }
+          }
+
           if (${JSON.stringify(scenario.name)} === "backup-import-rejected") {
             clickButton("Import");
-            await waitFor(() => pageText().indexOf("Import skipped invalid album IDs") !== -1, 8000, "rejected import");
+            await waitFor(() => pageText().indexOf("Import skipped 1 setting") !== -1, 8000, "rejected import");
             if (window.__smoke.posts.some((url) => url.indexOf("Photos: Album IDs") !== -1)) {
               throw new Error("Rejected album IDs were posted to the device");
             }
+          }
+
+          if (${JSON.stringify(scenario.name)} === "backup-import-missing-version") {
+            clickButton("Import");
+            await waitFor(() => pageText().indexOf("Invalid config file - missing version") !== -1, 8000, "missing version rejection");
+            if (window.__smoke.posts.length) throw new Error("Missing-version backup wrote settings to the device");
+          }
+
+          if (${JSON.stringify(scenario.name)} === "backup-import-future-version") {
+            clickButton("Import");
+            await waitFor(() => pageText().indexOf("Unsupported backup version 2 - this device supports version 1") !== -1, 8000, "future version rejection");
+            if (window.__smoke.posts.length) throw new Error("Future-version backup wrote settings to the device");
+          }
+
+          if (${JSON.stringify(scenario.name)} === "backup-import-unsupported-version") {
+            clickButton("Import");
+            await waitFor(() => pageText().indexOf("Unsupported backup version 0") !== -1, 8000, "unsupported version rejection");
+            if (window.__smoke.posts.length) throw new Error("Unsupported-version backup wrote settings to the device");
           }
         }
         if (window.__smoke.errors.length) throw new Error(window.__smoke.errors.join("; "));

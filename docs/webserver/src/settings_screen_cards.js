@@ -16,7 +16,7 @@
       dayVal.textContent = daySlider.value + "%";
     };
     daySlider.onchange = function () {
-      post(endpoints.brightness_day + "/set", { value: daySlider.value });
+      saveSetting("brightness_day", daySlider.value);
     };
     rwDay.appendChild(daySlider);
     rwDay.appendChild(dayVal);
@@ -37,7 +37,7 @@
       nightVal.textContent = nightSlider.value + "%";
     };
     nightSlider.onchange = function () {
-      post(endpoints.brightness_night + "/set", { value: nightSlider.value });
+      saveSetting("brightness_night", nightSlider.value);
     };
     rwNight.appendChild(nightSlider);
     rwNight.appendChild(nightVal);
@@ -73,7 +73,7 @@
       baseTog.className = S.base_tone_enabled ? "toggle on" : "toggle";
       baseDetails.style.display = S.base_tone_enabled ? "" : "none";
       toneBadge.className = "on-badge" + ((S.base_tone_enabled || S.warm_tones_enabled) ? " active" : "");
-      post(endpoints.base_tone_enabled + (S.base_tone_enabled ? "/turn_on" : "/turn_off"));
+      saveSetting("base_tone_enabled", S.base_tone_enabled);
     };
     baseTr.appendChild(baseTog);
     fBaseToneToggle.appendChild(baseTr);
@@ -91,7 +91,7 @@
     baseSlider.step = productNumberStep("base_tone", 5);
     baseSlider.value = S.base_tone;
     baseSlider.onchange = function () {
-      post(endpoints.base_tone + "/set", { value: baseSlider.value });
+      saveSetting("base_tone", baseSlider.value);
     };
     var baseLabelR = el("span", "range-label");
     baseLabelR.textContent = "Warmer";
@@ -115,7 +115,7 @@
       warmTog.className = S.warm_tones_enabled ? "toggle on" : "toggle";
       nightDetails.style.display = S.warm_tones_enabled ? "" : "none";
       toneBadge.className = "on-badge" + ((S.base_tone_enabled || S.warm_tones_enabled) ? " active" : "");
-      post(endpoints.warm_tones_enabled + (S.warm_tones_enabled ? "/turn_on" : "/turn_off"));
+      saveSetting("warm_tones_enabled", S.warm_tones_enabled);
     };
     warmTr.appendChild(warmTog);
     fWarmToggle.appendChild(warmTr);
@@ -133,7 +133,7 @@
     warmSlider.step = productNumberStep("warm_tone_intensity", 5);
     warmSlider.value = S.warm_tone_intensity;
     warmSlider.onchange = function () {
-      post(endpoints.warm_tone_intensity + "/set", { value: warmSlider.value });
+      saveSetting("warm_tone_intensity", warmSlider.value);
     };
     var warmLabelR = el("span", "range-label");
     warmLabelR.textContent = "Warmer";
@@ -150,7 +150,7 @@
     overTog.onclick = function () {
       S.warm_tone_override = !S.warm_tone_override;
       overTog.className = S.warm_tone_override ? "toggle on" : "toggle";
-      post(endpoints.warm_tone_override + (S.warm_tone_override ? "/turn_on" : "/turn_off"));
+      saveSetting("warm_tone_override", S.warm_tone_override);
     };
     overTr.appendChild(overTog);
     fOverride.appendChild(overTr);
@@ -177,7 +177,7 @@
       schedTog.className = S.schedule_enabled ? "toggle on" : "toggle";
       schedDetails.style.display = S.schedule_enabled ? "" : "none";
       schedBadge.className = "on-badge" + (S.schedule_enabled ? " active" : "");
-      post(endpoints.schedule_enabled + (S.schedule_enabled ? "/turn_on" : "/turn_off"));
+      saveSetting("schedule_enabled", S.schedule_enabled);
     };
     schedTr.appendChild(schedTog);
     fSchedToggle.appendChild(schedTr);
@@ -196,8 +196,7 @@
       onSel.appendChild(o);
     }
     onSel.onchange = function () {
-      S.schedule_on_hour = parseInt(onSel.value);
-      post(endpoints.schedule_on_hour + "/set", { value: onSel.value });
+      saveSetting("schedule_on_hour", parseInt(onSel.value));
     };
     fOnTime.appendChild(onSel);
     schedDetails.appendChild(fOnTime);
@@ -215,8 +214,7 @@
       offSel.appendChild(o2);
     }
     offSel.onchange = function () {
-      S.schedule_off_hour = parseInt(offSel.value);
-      post(endpoints.schedule_off_hour + "/set", { value: offSel.value });
+      saveSetting("schedule_off_hour", parseInt(offSel.value));
     };
     fOffTime.appendChild(offSel);
     schedDetails.appendChild(fOffTime);
@@ -234,8 +232,7 @@
     }
     fWakeTimeout.appendChild(
       selectFromOptions(scheduleWakeOptions, scheduleWakeCurrent, function (v) {
-        S.schedule_wake_timeout = normalizeScheduleWakeTimeout(v);
-        postScheduleWakeTimeout(S.schedule_wake_timeout);
+        saveSetting("schedule_wake_timeout", v);
       }, formatDurationSeconds)
     );
     schedDetails.appendChild(fWakeTimeout);
@@ -252,10 +249,7 @@
     var rotationOptions = screenRotationOptionsForUi();
     fRotation.appendChild(
       selectFromOptions(rotationOptions, effectiveScreenRotationForUi(), function (v) {
-        S.screen_rotation = v;
-        post(endpoints.screen_rotation + "/set", { option: v });
-        S.portrait_pairing = !isPortraitScreenRotation(v);
-        post(endpoints.portrait_pairing + (S.portrait_pairing ? "/turn_on" : "/turn_off"));
+        saveSetting("screen_rotation", v);
         renderSettings();
       }, function (v) {
         return v + " degrees";
@@ -278,9 +272,7 @@
       S.show_clock = !S.show_clock;
       tog.className = S.show_clock ? "toggle on" : "toggle";
       clockBadge.className = "on-badge" + (S.show_clock ? " active" : "");
-      post(
-        endpoints.show_clock + (S.show_clock ? "/turn_on" : "/turn_off")
-      );
+      saveSetting("show_clock", S.show_clock);
     };
     tr.appendChild(tog);
     f5.appendChild(tr);
@@ -289,8 +281,7 @@
     var f6 = field("Format");
     f6.appendChild(
       selectFromOptions(productSettingOptions("clock_format"), S.clock_format, function (v) {
-        S.clock_format = v;
-        post(endpoints.clock_format + "/set", { option: v });
+        saveSetting("clock_format", v);
       })
     );
     clkBody.appendChild(f6);
@@ -298,8 +289,7 @@
     var f7 = field("Timezone");
     f7.appendChild(
       timezoneSelect(S.tz_options, S.timezone, function (v) {
-        post(endpoints.timezone + "/set", { option: v });
-        S.timezone = v;
+        saveSetting("timezone", v);
       })
     );
     clkBody.appendChild(f7);

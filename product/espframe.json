@@ -161,7 +161,7 @@
     },
     "backup_import_write_behavior": "Each setting is pushed to the device individually",
     "backup_partial_config_behavior": "only settings present in the file are applied; everything else stays unchanged",
-    "backup_invalid_photo_id_behavior": "web UI shows an error and skips that field",
+    "backup_invalid_photo_id_behavior": "web UI reports the skipped setting and keeps importing other valid fields",
     "backup_fixture_files": [
       "tests/fixtures/backup/espframe-config-v1-full.json",
       "tests/fixtures/backup/espframe-config-v1-partial.json"
@@ -192,6 +192,20 @@
             "Stable firmware URL was invalid - not imported",
             "Beta firmware URL was invalid - not imported"
           ]
+        }
+      ],
+      "rejected_versions": [
+        {
+          "path": "tests/fixtures/compat/espframe-config-missing-version.json",
+          "message": "Invalid config file - missing version"
+        },
+        {
+          "path": "tests/fixtures/compat/espframe-config-v2-future-version.json",
+          "message": "Unsupported backup version 2 - this device supports version 1"
+        },
+        {
+          "path": "tests/fixtures/compat/espframe-config-v0-unsupported-version.json",
+          "message": "Unsupported backup version 0"
         }
       ]
     },
@@ -531,6 +545,7 @@
       "__ESPFRAME_MANUAL_ENTITIES__",
       "__ESPFRAME_MANUAL_STATE_KEYS__",
       "__ESPFRAME_ENTITY_ALIASES__",
+      "__ESPFRAME_BACKUP_CONFIG_VERSION__",
       "__ESPFRAME_BACKUP_SCHEMA__",
       "__ESPFRAME_INITIAL_FETCH_KEYS__",
       "__ESPFRAME_LIVE_RENDER_STATE_KEYS__",

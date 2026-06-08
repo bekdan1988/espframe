@@ -149,9 +149,15 @@ def validate_web_support(product: dict[str, Any], errors: list[str]) -> None:
     app = WEB_APP.read_text()
     labels_and_text = ((rel(WEB_TEMPLATE), template), (rel(WEB_APP), app))
     for label, text in labels_and_text:
-        require_contains(text, f"version: {product['project']['backup_config_version']}", label, errors)
+        require_contains(text, "version: BACKUP_CONFIG_VERSION", label, errors)
+        if label == rel(WEB_TEMPLATE):
+            require_contains(text, "var BACKUP_CONFIG_VERSION = __ESPFRAME_BACKUP_CONFIG_VERSION__", label, errors)
+        else:
+            require_contains(text, f"var BACKUP_CONFIG_VERSION = {product['project']['backup_config_version']}", label, errors)
         require_contains(text, "JSON.stringify(data, null, 2)", label, errors)
         require_contains(text, "buildBackupExportData", label, errors)
+        require_contains(text, "validateBackupConfigVersion", label, errors)
+        require_contains(text, "BACKUP_VERSION_MIGRATIONS", label, errors)
         require_contains(text, "BACKUP_SCHEMA.forEach", label, errors)
         require_contains(text, "normalizeScheduleWakeTimeout(S.schedule_wake_timeout)", label, errors)
         require_contains(text, "backupImportFieldPresent", label, errors)

@@ -76,6 +76,7 @@ def check_generated_web_metadata(product: dict[str, Any], errors: list[str]) -> 
         "MANUAL_ENTITIES": web_manual_entities_metadata(product),
         "MANUAL_STATE_KEYS": web_manual_state_keys(product),
         "ENTITY_ALIASES": web_entity_aliases_metadata(product),
+        "BACKUP_CONFIG_VERSION": product["project"].get("backup_config_version"),
         "BACKUP_SCHEMA": backup_schema(product),
         "INITIAL_FETCH_KEYS": web_initial_fetch_keys(product["settings"]),
         "LIVE_RENDER_STATE_KEYS": web_live_render_state_keys(product),
@@ -95,6 +96,10 @@ def check_backup_version_contract(product: dict[str, Any], errors: list[str]) ->
     version = product["project"].get("backup_config_version")
     if version != 1:
         errors.append("Phase 4 compatibility keeps backup_config_version at 1")
+    web_text = WEB_APP.read_text()
+    require_contains(web_text, "var BACKUP_CONFIG_VERSION = ", rel(WEB_APP), errors)
+    require_contains(web_text, "validateBackupConfigVersion", rel(WEB_APP), errors)
+    require_contains(web_text, "BACKUP_VERSION_MIGRATIONS", rel(WEB_APP), errors)
 
 
 def fixture_validation_errors(data: dict[str, Any], product: dict[str, Any]) -> list[str]:
@@ -201,6 +206,29 @@ def check_compatibility_fixtures(product: dict[str, Any], errors: list[str]) -> 
                 errors.append(f"{rel(path)} rejected fixture must list expected web UI messages")
                 continue
             for message in [str(value) for value in messages]:
+                require_contains(web_text, message, rel(WEB_APP), errors)
+
+    rejected_versions = fixtures.get("rejected_versions", [])
+    if not isinstance(rejected_versions, list) or not rejected_versions:
+        errors.append("project.compatibility_fixture_files.rejected_versions must be a non-empty list")
+    else:
+        web_text = WEB_APP.read_text()
+        for item in rejected_versions:
+            if not isinstance(item, dict):
+                errors.append("project.compatibility_fixture_files.rejected_versions entries must be objects")
+                continue
+            path = ROOT / str(item.get("path", ""))
+            data = load_json(path, errors)
+            if data and not fixture_validation_errors(data, product):
+                errors.append(f"{rel(path)} must contain a rejected backup version")
+            message = str(item.get("message", "")).strip()
+            if not message:
+                errors.append(f"{rel(path)} rejected version fixture must list an expected web UI message")
+            elif "Unsupported backup version" in message:
+                require_contains(web_text, "Unsupported backup version ", rel(WEB_APP), errors)
+                if "this device supports version" in message:
+                    require_contains(web_text, " - this device supports version ", rel(WEB_APP), errors)
+            else:
                 require_contains(web_text, message, rel(WEB_APP), errors)
 
 

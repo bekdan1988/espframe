@@ -118,13 +118,10 @@
     freqField.appendChild(
       selectFromOptions(autoUpdateOptions, currentAutoUpdate, function (v) {
         if (v === "Disabled") {
-          S.auto_update = false;
-          post(endpoints.auto_update + "/turn_off");
+          saveSetting("auto_update", false);
         } else {
-          S.auto_update = true;
-          S.update_frequency = v;
-          post(endpoints.auto_update + "/turn_on");
-          post(endpoints.update_frequency + "/set", { option: v });
+          saveSetting("auto_update", true);
+          saveSetting("update_frequency", v);
         }
       })
     );
@@ -137,7 +134,7 @@
     betaChannelToggle.onclick = function () {
       S.beta_channel = !S.beta_channel;
       betaChannelToggle.className = S.beta_channel ? "toggle on" : "toggle";
-      post(endpoints.beta_channel + (S.beta_channel ? "/turn_on" : "/turn_off"));
+      saveSetting("beta_channel", S.beta_channel);
       if (!S.beta_channel) {
         S.beta_available = false;
         S.beta_version = "";
@@ -170,7 +167,7 @@
           firmwareUrlError.textContent = "Use a full http:// or https:// URL";
           return;
         }
-        postTextValueSet(endpoints[key] + "/set", url, false)
+        saveSetting(key, url)
           .then(function (r) {
             if (!r || !r.ok) throw new Error("save_failed");
             return delayMs(500);
@@ -223,12 +220,9 @@
       S.developer_features_enabled = !S.developer_features_enabled;
       devToggle.className = S.developer_features_enabled ? "toggle on" : "toggle";
       devBadge.className = "on-badge" + (S.developer_features_enabled ? " active" : "");
-      post(endpoints.developer_features_enabled + (S.developer_features_enabled ? "/turn_on" : "/turn_off"));
+      saveSetting("developer_features_enabled", S.developer_features_enabled);
       if (!S.developer_features_enabled && isPortraitScreenRotation(S.screen_rotation)) {
-        S.screen_rotation = "0";
-        S.portrait_pairing = true;
-        post(endpoints.screen_rotation + "/set", { option: "0" });
-        post(endpoints.portrait_pairing + "/turn_on");
+        saveSetting("screen_rotation", "0");
       }
       renderSettings();
     };

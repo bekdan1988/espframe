@@ -82,8 +82,7 @@
       var f1 = field("Clock Format");
       f1.appendChild(
         selectFromOptions(productSettingOptions("clock_format"), S.clock_format, function (v) {
-          S.clock_format = v;
-          post(endpoints.clock_format + "/set", { option: v });
+          saveSetting("clock_format", v);
         })
       );
       card.appendChild(f1);
@@ -91,8 +90,7 @@
       var f2 = field("Timezone");
       f2.appendChild(
         timezoneSelect(S.tz_options, S.timezone, function (v) {
-          post(endpoints.timezone + "/set", { option: v });
-          S.timezone = v;
+          saveSetting("timezone", v);
         })
       );
       card.appendChild(f2);

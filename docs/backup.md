@@ -38,7 +38,7 @@ Firmware version, update status, sunrise/sunset, and current brightness are **no
 
 Partial config files work — only settings present in the file are applied; everything else stays unchanged.
 
-Album IDs, Album Labels, Person IDs, and Person Labels each must be 255 characters or fewer after trimming, which matches the device storage limit. If an import file exceeds that for any of those fields, the web UI shows an error and skips that field; other settings in the file are still sent.
+Album IDs, Album Labels, Person IDs, and Person Labels each must be 255 characters or fewer after trimming, which matches the device storage limit. If an import file exceeds that for any of those fields, the web UI reports the skipped setting and keeps importing other valid fields.
 
 ## File Format
 

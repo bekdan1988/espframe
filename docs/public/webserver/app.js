@@ -8,6 +8,7 @@
   var MANUAL_ENTITIES = {"immich_url":{"entity":"text/Connection: Server URL"},"api_key":{"entity":"text/Connection: API Key"},"backlight":{"entity":"light/Screen: Backlight"},"update":{"entity":"update/Firmware: Update"},"update_beta":{"entity":"update/Firmware: Update Beta"},"apply_photo_source":{"entity":"button/Apply Photo Source"},"firmware_check":{"entity":"button/Firmware: Check for Update"}};
   var MANUAL_STATE_KEYS = ["immich_url","api_key"];
   var ENTITY_ALIASES = {"schedule_enabled":[{"entity":"switch/Screen: Schedule","boolFromState":true}],"schedule_on_hour":[{"entity":"number/Screen: Schedule On","default":6,"number":true}],"schedule_off_hour":[{"entity":"number/Screen: Schedule Off","default":23,"number":true}]};
+  var BACKUP_CONFIG_VERSION = 1;
   var BACKUP_SCHEMA = [{"group":"connection","field":"immich_url","state_keys":["immich_url"]},{"group":"connection","field":"api_key","state_keys":["api_key"]},{"group":"photos","field":"source","state_keys":["photo_source"]},{"group":"photos","field":"album_ids","state_keys":["album_ids"]},{"group":"photos","field":"album_labels","state_keys":["album_labels"]},{"group":"photos","field":"person_ids","state_keys":["person_ids"]},{"group":"photos","field":"person_labels","state_keys":["person_labels"]},{"group":"photos","field":"date_filter_enabled","state_keys":["date_filter_enabled"]},{"group":"photos","field":"date_filter_mode","state_keys":["date_filter_mode"]},{"group":"photos","field":"date_from","state_keys":["date_from"]},{"group":"photos","field":"date_to","state_keys":["date_to"]},{"group":"photos","field":"relative_amount","state_keys":["relative_amount"]},{"group":"photos","field":"relative_unit","state_keys":["relative_unit"]},{"group":"photos","field":"orientation","state_keys":["photo_orientation"]},{"group":"photos","field":"portrait_pairing","state_keys":["portrait_pairing"]},{"group":"photos","field":"display_mode","state_keys":["display_mode"]},{"group":"frequency","field":"interval","state_keys":["interval"]},{"group":"frequency","field":"conn_timeout","state_keys":["conn_timeout"]},{"group":"firmware_updates","field":"auto_update","state_keys":["auto_update"]},{"group":"firmware_updates","field":"beta_channel","state_keys":["beta_channel"]},{"group":"firmware_updates","field":"update_frequency","state_keys":["update_frequency"]},{"group":"firmware_updates","field":"manifest_url","state_keys":["firmware_manifest_url"]},{"group":"firmware_updates","field":"beta_manifest_url","state_keys":["firmware_beta_manifest_url"]},{"group":"clock","field":"show","state_keys":["show_clock"]},{"group":"clock","field":"format","state_keys":["clock_format"]},{"group":"clock","field":"timezone","state_keys":["timezone"]},{"group":"clock","field":"ntp_servers","state_keys":["ntp_server_1","ntp_server_2","ntp_server_3"]},{"group":"screen","field":"brightness_day","state_keys":["brightness_day"]},{"group":"screen","field":"brightness_night","state_keys":["brightness_night"]},{"group":"screen","field":"schedule_enabled","state_keys":["schedule_enabled"]},{"group":"screen","field":"schedule_on_hour","state_keys":["schedule_on_hour"]},{"group":"screen","field":"schedule_off_hour","state_keys":["schedule_off_hour"]},{"group":"screen","field":"schedule_wake_timeout","state_keys":["schedule_wake_timeout"]},{"group":"screen","field":"base_tone_enabled","state_keys":["base_tone_enabled"]},{"group":"screen","field":"base_tone","state_keys":["base_tone"]},{"group":"screen","field":"warm_tones_enabled","state_keys":["warm_tones_enabled"]},{"group":"screen","field":"warm_tone_intensity","state_keys":["warm_tone_intensity"]},{"group":"screen","field":"warm_tone_override","state_keys":["warm_tone_override"]},{"group":"screen","field":"rotation","state_keys":["screen_rotation"]}];
   var LIVE_RENDER_STATE_KEYS = ["screen_rotation","portrait_pairing","developer_features_enabled","beta_channel"];
   var LIVE_RENDER_STATE_PREFIXES = ["photo_metadata_","schedule_"];
@@ -280,6 +281,22 @@
     return entityStringParts(spec && spec.entity);
   }
 
+  function settingEntityParts(key) {
+    var parts = productSettingEntityParts(key);
+    if (!parts && STATIC_ENTITIES && STATIC_ENTITIES[key]) {
+      parts = entityStringParts(STATIC_ENTITIES[key].entity);
+    }
+    if (!parts && MANUAL_ENTITIES && MANUAL_ENTITIES[key]) {
+      parts = entityStringParts(MANUAL_ENTITIES[key].entity);
+    }
+    return parts;
+  }
+
+  function settingEntityDomain(key) {
+    var parts = settingEntityParts(key);
+    return parts && parts.domain ? parts.domain : "";
+  }
+
   var endpoints = {};
 
   function registerManualEntityEndpoints() {
@@ -322,11 +339,6 @@
       console.error("POST " + fullUrl + " error:", err);
       showBanner("Failed to save setting", "error");
     });
-  }
-
-  function postScheduleWakeTimeout(value) {
-    var seconds = normalizeScheduleWakeTimeout(value);
-    post(endpoints.schedule_wake_timeout + "/set", { value: seconds });
   }
 
   // Matches the ESPHome template text max_length for album/person ID and label lists.
@@ -411,6 +423,89 @@
       });
   }
 
+  var PHOTO_SOURCE_APPLY_SETTING_KEYS = [
+    "photo_source",
+    "album_ids",
+    "person_ids",
+    "date_filter_enabled",
+    "date_filter_mode",
+    "date_from",
+    "date_to",
+    "relative_amount",
+    "relative_unit"
+  ];
+
+  function settingUsesPhotoSourceApply(key) {
+    return PHOTO_SOURCE_APPLY_SETTING_KEYS.indexOf(key) !== -1;
+  }
+
+  function saveGenericSetting(key, value) {
+    if (!key || !endpoints[key]) return Promise.resolve(null);
+    var domain = settingEntityDomain(key);
+    var savedValue = value;
+    if (domain === "switch") savedValue = !!value;
+    if (domain === "number") {
+      var numberValue = Number(value);
+      if (isFinite(numberValue)) savedValue = numberValue;
+    }
+    if (domain === "select" || domain === "text") savedValue = value == null ? "" : String(value);
+    S[key] = savedValue;
+    if (domain === "switch") {
+      return post(endpoints[key] + (savedValue ? "/turn_on" : "/turn_off"));
+    }
+    if (domain === "select") {
+      return post(endpoints[key] + "/set", { option: savedValue });
+    }
+    if (domain === "number") {
+      return post(endpoints[key] + "/set", { value: savedValue });
+    }
+    if (domain === "text") {
+      return postTextValueSet(endpoints[key] + "/set", savedValue);
+    }
+    return Promise.resolve(null);
+  }
+
+  function saveNtpServer(key, value) {
+    var server = normalizeNtpServer(value);
+    S[key] = server;
+    return postTextValueSet(endpoints[key] + "/set", server);
+  }
+
+  function saveScheduleWakeTimeoutSetting(key, value) {
+    return saveGenericSetting(key, normalizeScheduleWakeTimeout(value));
+  }
+
+  function saveScreenRotationSetting(key, value) {
+    var rotation = String(value);
+    if (screenRotationOptionsForUi().indexOf(rotation) === -1) return Promise.resolve(null);
+    S.screen_rotation = rotation;
+    S.portrait_pairing = !isPortraitScreenRotation(rotation);
+    return Promise.all([
+      saveGenericSetting("screen_rotation", rotation),
+      saveGenericSetting("portrait_pairing", S.portrait_pairing)
+    ]);
+  }
+
+  var SETTING_SAVE_ADAPTERS = {
+    ntp_server_1: saveNtpServer,
+    ntp_server_2: saveNtpServer,
+    ntp_server_3: saveNtpServer,
+    schedule_wake_timeout: saveScheduleWakeTimeoutSetting,
+    screen_rotation: saveScreenRotationSetting
+  };
+
+  function saveSetting(key, value, options) {
+    var opts = options || {};
+    var adapter = SETTING_SAVE_ADAPTERS[key];
+    var result = adapter ? adapter(key, value, opts) : saveGenericSetting(key, value);
+    if (!opts.applyPhotoSource || !settingUsesPhotoSourceApply(key)) return result;
+    return Promise.resolve(result).then(function (saved) {
+      return post(endpoints.apply_photo_source + "/press").then(function () {
+        return saved;
+      });
+    });
+  }
+
   function makeConnectionUrlField(value) {
     var f = field("Immich Server URL");
     var urlInput = input("url", value, "http://192.168.0.1:2283");
@@ -460,12 +555,6 @@
     row.appendChild(mask);
     row.appendChild(cb);
     return row;
-  }
-
-  function saveNtpServer(key, value) {
-    var server = normalizeNtpServer(value);
-    S[key] = server;
-    return postTextValueSet(endpoints[key] + "/set", server);
   }
 
     function normalizeNtpServer(value) {
@@ -1063,8 +1152,7 @@ if (typeof module !== "undefined") {
       var f1 = field("Clock Format");
       f1.appendChild(
         selectFromOptions(productSettingOptions("clock_format"), S.clock_format, function (v) {
-          S.clock_format = v;
-          post(endpoints.clock_format + "/set", { option: v });
+          saveSetting("clock_format", v);
         })
       );
       card.appendChild(f1);
@@ -1072,8 +1160,7 @@ if (typeof module !== "undefined") {
       var f2 = field("Timezone");
       f2.appendChild(
         timezoneSelect(S.tz_options, S.timezone, function (v) {
-          post(endpoints.timezone + "/set", { option: v });
-          S.timezone = v;
+          saveSetting("timezone", v);
         })
       );
       card.appendChild(f2);
@@ -1369,24 +1456,19 @@ if (typeof module !== "undefined") {
       if (!vals) return;
       var requests = [];
       if (changes.source) {
-        S.photo_source = vals.source;
-        requests.push(post(endpoints.photo_source + "/set", { option: vals.source }));
+        requests.push(saveSetting("photo_source", vals.source));
       }
       if (changes.album) {
-        S.album_ids = vals.albumIds;
-        requests.push(postTextValueSet(endpoints.album_ids + "/set", vals.albumIds));
+        requests.push(saveSetting("album_ids", vals.albumIds));
       }
       if (changes.albumLabel) {
-        S.album_labels = vals.albumLabels;
-        requests.push(postTextValueSet(endpoints.album_labels + "/set", vals.albumLabels));
+        requests.push(saveSetting("album_labels", vals.albumLabels));
       }
       if (changes.person) {
-        S.person_ids = vals.personIds;
-        requests.push(postTextValueSet(endpoints.person_ids + "/set", vals.personIds));
+        requests.push(saveSetting("person_ids", vals.personIds));
       }
       if (changes.personLabel) {
-        S.person_labels = vals.personLabels;
-        requests.push(postTextValueSet(endpoints.person_labels + "/set", vals.personLabels));
+        requests.push(saveSetting("person_labels", vals.personLabels));
       }
       if (!requests.length) return;
       Promise.all(requests).then(function () {
@@ -1621,12 +1703,12 @@ if (typeof module !== "undefined") {
       S.relative_unit = vals.unit;
       filterBadge.className = "on-badge" + (isFilterActive(S.date_filter_enabled) ? " active" : "");
       Promise.all([
-        post(endpoints.date_filter_enabled + (S.date_filter_enabled ? "/turn_on" : "/turn_off")),
-        post(endpoints.date_filter_mode + "/set", { option: modeVal }),
-        post(endpoints.date_from + "/set", { value: vals.from }),
-        post(endpoints.date_to + "/set", { value: vals.to }),
-        post(endpoints.relative_amount + "/set", { value: vals.amount }),
-        post(endpoints.relative_unit + "/set", { option: vals.unit })
+        saveSetting("date_filter_enabled", S.date_filter_enabled),
+        saveSetting("date_filter_mode", modeVal),
+        saveSetting("date_from", vals.from),
+        saveSetting("date_to", vals.to),
+        saveSetting("relative_amount", vals.amount),
+        saveSetting("relative_unit", vals.unit)
       ]).then(function () {
         post(endpoints.apply_photo_source + "/press");
       });
@@ -1660,7 +1742,7 @@ if (typeof module !== "undefined") {
       if (portraitRotationActive) return;
       S.portrait_pairing = !S.portrait_pairing;
       pairTog.className = S.portrait_pairing ? "toggle on" : "toggle";
-      post(endpoints.portrait_pairing + (S.portrait_pairing ? "/turn_on" : "/turn_off"));
+      saveSetting("portrait_pairing", S.portrait_pairing);
     };
     pairTr.appendChild(pairTog);
     fPairToggle.appendChild(pairTr);
@@ -1669,8 +1751,7 @@ if (typeof module !== "undefined") {
     var fPhotoOrientation = field("Photo Orientation");
     fPhotoOrientation.appendChild(
       selectFromOptions(productSettingOptions("photo_orientation"), S.photo_orientation, function (v) {
-        S.photo_orientation = v;
-        post(endpoints.photo_orientation + "/set", { option: v });
+        saveSetting("photo_orientation", v);
       })
     );
     photoBody.appendChild(fPhotoOrientation);
@@ -1678,8 +1759,7 @@ if (typeof module !== "undefined") {
     var fDisplayMode = field("Display Mode");
     fDisplayMode.appendChild(
       selectFromOptions(productSettingOptions("display_mode"), S.display_mode, function (v) {
-        S.display_mode = v;
-        post(endpoints.display_mode + "/set", { option: v });
+        saveSetting("display_mode", v);
       })
     );
     photoBody.appendChild(fDisplayMode);
@@ -1714,7 +1794,7 @@ if (typeof module !== "undefined") {
       S.photo_metadata_date_enabled = !S.photo_metadata_date_enabled;
       metadataDateTog.className = S.photo_metadata_date_enabled ? "toggle on" : "toggle";
       refreshMetadataDetails();
-      post(endpoints.photo_metadata_date_enabled + (S.photo_metadata_date_enabled ? "/turn_on" : "/turn_off"));
+      saveSetting("photo_metadata_date_enabled", S.photo_metadata_date_enabled);
     };
     metadataDateTr.appendChild(metadataDateTog);
     fMetadataDate.appendChild(metadataDateTr);
@@ -1722,9 +1802,8 @@ if (typeof module !== "undefined") {
     var fMetadataDateFormat = field("Date Format");
     fMetadataDateFormat.appendChild(
       selectFromOptions(productSettingOptions("photo_metadata_date_format"), S.photo_metadata_date_format, function (v) {
-        S.photo_metadata_date_format = v;
+        saveSetting("photo_metadata_date_format", v);
         refreshMetadataDetails();
-        post(endpoints.photo_metadata_date_format + "/set", { option: v });
       })
     );
     metadataDateDetails.appendChild(fMetadataDateFormat);
@@ -1732,8 +1811,7 @@ if (typeof module !== "undefined") {
     fMetadataDateTakenFormat = field("Date Taken Format");
     fMetadataDateTakenFormat.appendChild(
       selectFromOptions(productSettingOptions("photo_metadata_date_taken_format"), S.photo_metadata_date_taken_format, function (v) {
-        S.photo_metadata_date_taken_format = v;
-        post(endpoints.photo_metadata_date_taken_format + "/set", { option: v });
+        saveSetting("photo_metadata_date_taken_format", v);
       })
     );
     metadataDateDetails.appendChild(fMetadataDateTakenFormat);
@@ -1746,7 +1824,7 @@ if (typeof module !== "undefined") {
       S.photo_metadata_location_enabled = !S.photo_metadata_location_enabled;
       metadataLocationTog.className = S.photo_metadata_location_enabled ? "toggle on" : "toggle";
       refreshMetadataDetails();
-      post(endpoints.photo_metadata_location_enabled + (S.photo_metadata_location_enabled ? "/turn_on" : "/turn_off"));
+      saveSetting("photo_metadata_location_enabled", S.photo_metadata_location_enabled);
     };
     metadataLocationTr.appendChild(metadataLocationTog);
     fMetadataLocation.appendChild(metadataLocationTr);
@@ -1777,7 +1855,7 @@ if (typeof module !== "undefined") {
       dayVal.textContent = daySlider.value + "%";
     };
     daySlider.onchange = function () {
-      post(endpoints.brightness_day + "/set", { value: daySlider.value });
+      saveSetting("brightness_day", daySlider.value);
     };
     rwDay.appendChild(daySlider);
     rwDay.appendChild(dayVal);
@@ -1798,7 +1876,7 @@ if (typeof module !== "undefined") {
       nightVal.textContent = nightSlider.value + "%";
     };
     nightSlider.onchange = function () {
-      post(endpoints.brightness_night + "/set", { value: nightSlider.value });
+      saveSetting("brightness_night", nightSlider.value);
     };
     rwNight.appendChild(nightSlider);
     rwNight.appendChild(nightVal);
@@ -1834,7 +1912,7 @@ if (typeof module !== "undefined") {
       baseTog.className = S.base_tone_enabled ? "toggle on" : "toggle";
       baseDetails.style.display = S.base_tone_enabled ? "" : "none";
       toneBadge.className = "on-badge" + ((S.base_tone_enabled || S.warm_tones_enabled) ? " active" : "");
-      post(endpoints.base_tone_enabled + (S.base_tone_enabled ? "/turn_on" : "/turn_off"));
+      saveSetting("base_tone_enabled", S.base_tone_enabled);
     };
     baseTr.appendChild(baseTog);
     fBaseToneToggle.appendChild(baseTr);
@@ -1852,7 +1930,7 @@ if (typeof module !== "undefined") {
     baseSlider.step = productNumberStep("base_tone", 5);
     baseSlider.value = S.base_tone;
     baseSlider.onchange = function () {
-      post(endpoints.base_tone + "/set", { value: baseSlider.value });
+      saveSetting("base_tone", baseSlider.value);
     };
     var baseLabelR = el("span", "range-label");
     baseLabelR.textContent = "Warmer";
@@ -1876,7 +1954,7 @@ if (typeof module !== "undefined") {
       warmTog.className = S.warm_tones_enabled ? "toggle on" : "toggle";
       nightDetails.style.display = S.warm_tones_enabled ? "" : "none";
       toneBadge.className = "on-badge" + ((S.base_tone_enabled || S.warm_tones_enabled) ? " active" : "");
-      post(endpoints.warm_tones_enabled + (S.warm_tones_enabled ? "/turn_on" : "/turn_off"));
+      saveSetting("warm_tones_enabled", S.warm_tones_enabled);
     };
     warmTr.appendChild(warmTog);
     fWarmToggle.appendChild(warmTr);
@@ -1894,7 +1972,7 @@ if (typeof module !== "undefined") {
     warmSlider.step = productNumberStep("warm_tone_intensity", 5);
     warmSlider.value = S.warm_tone_intensity;
     warmSlider.onchange = function () {
-      post(endpoints.warm_tone_intensity + "/set", { value: warmSlider.value });
+      saveSetting("warm_tone_intensity", warmSlider.value);
     };
     var warmLabelR = el("span", "range-label");
     warmLabelR.textContent = "Warmer";
@@ -1911,7 +1989,7 @@ if (typeof module !== "undefined") {
     overTog.onclick = function () {
       S.warm_tone_override = !S.warm_tone_override;
       overTog.className = S.warm_tone_override ? "toggle on" : "toggle";
-      post(endpoints.warm_tone_override + (S.warm_tone_override ? "/turn_on" : "/turn_off"));
+      saveSetting("warm_tone_override", S.warm_tone_override);
     };
     overTr.appendChild(overTog);
     fOverride.appendChild(overTr);
@@ -1938,7 +2016,7 @@ if (typeof module !== "undefined") {
       schedTog.className = S.schedule_enabled ? "toggle on" : "toggle";
       schedDetails.style.display = S.schedule_enabled ? "" : "none";
       schedBadge.className = "on-badge" + (S.schedule_enabled ? " active" : "");
-      post(endpoints.schedule_enabled + (S.schedule_enabled ? "/turn_on" : "/turn_off"));
+      saveSetting("schedule_enabled", S.schedule_enabled);
     };
     schedTr.appendChild(schedTog);
     fSchedToggle.appendChild(schedTr);
@@ -1957,8 +2035,7 @@ if (typeof module !== "undefined") {
       onSel.appendChild(o);
     }
     onSel.onchange = function () {
-      S.schedule_on_hour = parseInt(onSel.value);
-      post(endpoints.schedule_on_hour + "/set", { value: onSel.value });
+      saveSetting("schedule_on_hour", parseInt(onSel.value));
     };
     fOnTime.appendChild(onSel);
     schedDetails.appendChild(fOnTime);
@@ -1976,8 +2053,7 @@ if (typeof module !== "undefined") {
       offSel.appendChild(o2);
     }
     offSel.onchange = function () {
-      S.schedule_off_hour = parseInt(offSel.value);
-      post(endpoints.schedule_off_hour + "/set", { value: offSel.value });
+      saveSetting("schedule_off_hour", parseInt(offSel.value));
     };
     fOffTime.appendChild(offSel);
     schedDetails.appendChild(fOffTime);
@@ -1995,8 +2071,7 @@ if (typeof module !== "undefined") {
     }
     fWakeTimeout.appendChild(
       selectFromOptions(scheduleWakeOptions, scheduleWakeCurrent, function (v) {
-        S.schedule_wake_timeout = normalizeScheduleWakeTimeout(v);
-        postScheduleWakeTimeout(S.schedule_wake_timeout);
+        saveSetting("schedule_wake_timeout", v);
       }, formatDurationSeconds)
     );
     schedDetails.appendChild(fWakeTimeout);
@@ -2013,10 +2088,7 @@ if (typeof module !== "undefined") {
     var rotationOptions = screenRotationOptionsForUi();
     fRotation.appendChild(
       selectFromOptions(rotationOptions, effectiveScreenRotationForUi(), function (v) {
-        S.screen_rotation = v;
-        post(endpoints.screen_rotation + "/set", { option: v });
-        S.portrait_pairing = !isPortraitScreenRotation(v);
-        post(endpoints.portrait_pairing + (S.portrait_pairing ? "/turn_on" : "/turn_off"));
+        saveSetting("screen_rotation", v);
         renderSettings();
       }, function (v) {
         return v + " degrees";
@@ -2039,9 +2111,7 @@ if (typeof module !== "undefined") {
       S.show_clock = !S.show_clock;
       tog.className = S.show_clock ? "toggle on" : "toggle";
       clockBadge.className = "on-badge" + (S.show_clock ? " active" : "");
-      post(
-        endpoints.show_clock + (S.show_clock ? "/turn_on" : "/turn_off")
-      );
+      saveSetting("show_clock", S.show_clock);
     };
     tr.appendChild(tog);
     f5.appendChild(tr);
@@ -2050,8 +2120,7 @@ if (typeof module !== "undefined") {
     var f6 = field("Format");
     f6.appendChild(
       selectFromOptions(productSettingOptions("clock_format"), S.clock_format, function (v) {
-        S.clock_format = v;
-        post(endpoints.clock_format + "/set", { option: v });
+        saveSetting("clock_format", v);
       })
     );
     clkBody.appendChild(f6);
@@ -2059,8 +2128,7 @@ if (typeof module !== "undefined") {
     var f7 = field("Timezone");
     f7.appendChild(
       timezoneSelect(S.tz_options, S.timezone, function (v) {
-        post(endpoints.timezone + "/set", { option: v });
-        S.timezone = v;
+        saveSetting("timezone", v);
       })
     );
     clkBody.appendChild(f7);
@@ -2189,13 +2257,10 @@ if (typeof module !== "undefined") {
     freqField.appendChild(
       selectFromOptions(autoUpdateOptions, currentAutoUpdate, function (v) {
         if (v === "Disabled") {
-          S.auto_update = false;
-          post(endpoints.auto_update + "/turn_off");
+          saveSetting("auto_update", false);
         } else {
-          S.auto_update = true;
-          S.update_frequency = v;
-          post(endpoints.auto_update + "/turn_on");
-          post(endpoints.update_frequency + "/set", { option: v });
+          saveSetting("auto_update", true);
+          saveSetting("update_frequency", v);
         }
       })
     );
@@ -2208,7 +2273,7 @@ if (typeof module !== "undefined") {
     betaChannelToggle.onclick = function () {
       S.beta_channel = !S.beta_channel;
       betaChannelToggle.className = S.beta_channel ? "toggle on" : "toggle";
-      post(endpoints.beta_channel + (S.beta_channel ? "/turn_on" : "/turn_off"));
+      saveSetting("beta_channel", S.beta_channel);
       if (!S.beta_channel) {
         S.beta_available = false;
         S.beta_version = "";
@@ -2241,7 +2306,7 @@ if (typeof module !== "undefined") {
           firmwareUrlError.textContent = "Use a full http:// or https:// URL";
           return;
         }
-        postTextValueSet(endpoints[key] + "/set", url, false)
+        saveSetting(key, url)
           .then(function (r) {
             if (!r || !r.ok) throw new Error("save_failed");
             return delayMs(500);
@@ -2294,12 +2359,9 @@ if (typeof module !== "undefined") {
       S.developer_features_enabled = !S.developer_features_enabled;
       devToggle.className = S.developer_features_enabled ? "toggle on" : "toggle";
       devBadge.className = "on-badge" + (S.developer_features_enabled ? " active" : "");
-      post(endpoints.developer_features_enabled + (S.developer_features_enabled ? "/turn_on" : "/turn_off"));
+      saveSetting("developer_features_enabled", S.developer_features_enabled);
       if (!S.developer_features_enabled && isPortraitScreenRotation(S.screen_rotation)) {
-        S.screen_rotation = "0";
-        S.portrait_pairing = true;
-        post(endpoints.screen_rotation + "/set", { option: "0" });
-        post(endpoints.portrait_pairing + "/turn_on");
+        saveSetting("screen_rotation", "0");
       }
       renderSettings();
     };
@@ -2445,8 +2507,7 @@ if (typeof module !== "undefined") {
     var current = opts.current !== undefined ? opts.current : S[key];
     f.appendChild(
       selectFromOptions(productSettingOptions(key, opts.includeDeveloper), current, function (v) {
-        S[key] = v;
-        post(endpoints[key] + "/set", { option: v });
+        saveSetting(key, v);
         if (opts.onChange) opts.onChange(v);
       }, opts.optionDisplayFn)
     );
@@ -2578,7 +2639,7 @@ if (typeof module !== "undefined") {
       var serverInput = input("text", S[spec.key], spec.placeholder, MAX_NTP_SERVER_LENGTH);
       serverInput.setAttribute("aria-label", spec.label);
       serverInput.onchange = function () {
-        saveNtpServer(spec.key, serverInput.value);
+        saveSetting(spec.key, serverInput.value);
         serverInput.value = S[spec.key];
       };
       list.appendChild(serverInput);
@@ -2631,7 +2692,7 @@ if (typeof module !== "undefined") {
 
   function buildBackupExportData() {
     var data = {
-      version: 1,
+      version: BACKUP_CONFIG_VERSION,
       exported_at: new Date().toISOString()
     };
     BACKUP_SCHEMA.forEach(function (entry) {
@@ -2640,6 +2701,32 @@ if (typeof module !== "undefined") {
       data[entry.group][entry.field] = backupExportFieldValue(entry);
     });
     return data;
+  }
+
+  var BACKUP_VERSION_MIGRATIONS = {
+    1: function backupConfigVersion1(data) {
+      return data;
+    }
+  };
+
+  function validateBackupConfigVersion(data) {
+    if (!data || typeof data !== "object" || !Object.prototype.hasOwnProperty.call(data, "version")) {
+      return "Invalid config file - missing version";
+    }
+    if (typeof data.version !== "number" || !isFinite(data.version) || Math.floor(data.version) !== data.version) {
+      return "Unsupported backup version " + String(data.version);
+    }
+    if (data.version > BACKUP_CONFIG_VERSION) {
+      return "Unsupported backup version " + data.version + " - this device supports version " + BACKUP_CONFIG_VERSION;
+    }
+    if (!BACKUP_VERSION_MIGRATIONS[data.version]) {
+      return "Unsupported backup version " + data.version;
+    }
+    return "";
+  }
+
+  function migrateBackupConfig(data) {
+    return BACKUP_VERSION_MIGRATIONS[data.version](data);
   }
 
   function exportConfig() {
@@ -2678,124 +2765,120 @@ if (typeof module !== "undefined") {
     return entry && Array.isArray(entry.state_keys) && entry.state_keys.length ? entry.state_keys[0] : "";
   }
 
-  function backupImportEntityDomain(stateKey) {
-    var parts = productSettingEntityParts(stateKey);
-    if (!parts && STATIC_ENTITIES && STATIC_ENTITIES[stateKey]) {
-      parts = entityStringParts(STATIC_ENTITIES[stateKey].entity);
-    }
-    if (!parts && MANUAL_ENTITIES && MANUAL_ENTITIES[stateKey]) {
-      parts = entityStringParts(MANUAL_ENTITIES[stateKey].entity);
-    }
-    return parts && parts.domain ? parts.domain : "";
+  var backupImportSavePromises = null;
+
+  function trackBackupImportSave(result) {
+    if (backupImportSavePromises) backupImportSavePromises.push(Promise.resolve(result));
+  }
+
+  function backupImportEntryUsesPhotoSourceApply(entry) {
+    return entry && entry.group === "photos" && Array.isArray(entry.state_keys) &&
+      entry.state_keys.some(settingUsesPhotoSourceApply);
   }
 
   function applyGenericBackupImportField(entry, value) {
     var stateKey = backupImportStateKey(entry);
-    if (!stateKey || !endpoints[stateKey]) return;
-    var domain = backupImportEntityDomain(stateKey);
-    S[stateKey] = value;
-    if (domain === "switch") {
-      post(endpoints[stateKey] + (value ? "/turn_on" : "/turn_off"));
-    } else if (domain === "select") {
-      post(endpoints[stateKey] + "/set", { option: value });
-    } else if (domain === "number" || domain === "text") {
-      post(endpoints[stateKey] + "/set", { value: value });
-    }
+    if (!stateKey || !endpoints[stateKey]) return false;
+    trackBackupImportSave(saveSetting(stateKey, value));
+    return true;
+  }
+
+  function skipBackupImportField(message) {
+    showBanner(message, "error");
+    return false;
+  }
+
+  function backupImportSummaryMessage(appliedCount, skippedCount) {
+    if (!skippedCount) return "Settings imported successfully";
+    var skippedText = skippedCount + " skipped " + (skippedCount === 1 ? "setting" : "settings");
+    if (appliedCount) return "Imported with " + skippedText;
+    return "Import skipped " + skippedCount + " " + (skippedCount === 1 ? "setting" : "settings");
   }
 
   function applyBackupImportField(entry, value) {
     switch (backupEntryKey(entry)) {
       case "connection.immich_url":
-        S.immich_url = normalizeImmichUrl(value);
-        postTextValueSet(endpoints.immich_url + "/set", S.immich_url, true);
-        return;
+        trackBackupImportSave(saveSetting("immich_url", normalizeImmichUrl(value)));
+        return true;
       case "connection.api_key":
-        S.api_key = value;
-        postTextValueSet(endpoints.api_key + "/set", value, true);
-        return;
+        trackBackupImportSave(saveSetting("api_key", value));
+        return true;
       case "photos.album_ids":
         var importAlbum = String(value).trim();
         if (photoIdFieldTooLong(importAlbum)) {
-          showBanner("Album IDs exceed 255 characters - not imported", "error");
+          return skipBackupImportField("Album IDs exceed 255 characters - not imported");
         } else if (!isValidUuidList(importAlbum)) {
-          showBanner("Import skipped invalid album IDs", "error");
+          return skipBackupImportField("Import skipped invalid album IDs");
         } else {
-          S.album_ids = importAlbum;
-          postTextValueSet(endpoints.album_ids + "/set", importAlbum);
+          trackBackupImportSave(saveSetting("album_ids", importAlbum));
         }
-        return;
+        return true;
       case "photos.album_labels":
         var importAlbumLabels = String(value).trim();
         if (photoLabelFieldTooLong(importAlbumLabels)) {
-          showBanner("Album labels exceed 255 characters - not imported", "error");
+          return skipBackupImportField("Album labels exceed 255 characters - not imported");
         } else {
-          S.album_labels = importAlbumLabels;
-          postTextValueSet(endpoints.album_labels + "/set", importAlbumLabels);
+          trackBackupImportSave(saveSetting("album_labels", importAlbumLabels));
         }
-        return;
+        return true;
       case "photos.person_ids":
         var importPerson = String(value).trim();
         if (photoIdFieldTooLong(importPerson)) {
-          showBanner("Person IDs exceed 255 characters - not imported", "error");
+          return skipBackupImportField("Person IDs exceed 255 characters - not imported");
         } else if (!isValidUuidList(importPerson)) {
-          showBanner("Import skipped invalid person IDs", "error");
+          return skipBackupImportField("Import skipped invalid person IDs");
         } else {
-          S.person_ids = importPerson;
-          postTextValueSet(endpoints.person_ids + "/set", importPerson);
+          trackBackupImportSave(saveSetting("person_ids", importPerson));
         }
-        return;
+        return true;
       case "photos.person_labels":
         var importPersonLabels = String(value).trim();
         if (photoLabelFieldTooLong(importPersonLabels)) {
-          showBanner("Person labels exceed 255 characters - not imported", "error");
+          return skipBackupImportField("Person labels exceed 255 characters - not imported");
         } else {
-          S.person_labels = importPersonLabels;
-          postTextValueSet(endpoints.person_labels + "/set", importPersonLabels);
+          trackBackupImportSave(saveSetting("person_labels", importPersonLabels));
         }
-        return;
+        return true;
       case "firmware_updates.manifest_url":
         var importManifestUrl = normalizeFirmwareManifestUrl(value);
         if (importManifestUrl && !isValidHttpUrl(importManifestUrl)) {
-          showBanner("Stable firmware URL was invalid - not imported", "error");
+          return skipBackupImportField("Stable firmware URL was invalid - not imported");
         } else {
-          S.firmware_manifest_url = importManifestUrl;
-          postTextValueSet(endpoints.firmware_manifest_url + "/set", importManifestUrl);
+          trackBackupImportSave(saveSetting("firmware_manifest_url", importManifestUrl));
         }
-        return;
+        return true;
       case "firmware_updates.beta_manifest_url":
         var importBetaManifestUrl = normalizeFirmwareManifestUrl(value);
         if (importBetaManifestUrl && !isValidHttpUrl(importBetaManifestUrl)) {
-          showBanner("Beta firmware URL was invalid - not imported", "error");
+          return skipBackupImportField("Beta firmware URL was invalid - not imported");
         } else {
-          S.firmware_beta_manifest_url = importBetaManifestUrl;
-          postTextValueSet(endpoints.firmware_beta_manifest_url + "/set", importBetaManifestUrl);
+          trackBackupImportSave(saveSetting("firmware_beta_manifest_url", importBetaManifestUrl));
         }
-        return;
+        return true;
       case "clock.timezone":
-        S.timezone = normalizeTimezoneOption(value);
-        post(endpoints.timezone + "/set", { option: S.timezone });
-        return;
+        trackBackupImportSave(saveSetting("timezone", normalizeTimezoneOption(value)));
+        return true;
       case "clock.ntp_servers":
         if (Array.isArray(value)) {
           ["ntp_server_1", "ntp_server_2", "ntp_server_3"].forEach(function (key, idx) {
             if (value[idx] === undefined) return;
-            saveNtpServer(key, value[idx]);
+            trackBackupImportSave(saveSetting(key, value[idx]));
           });
+          return true;
         }
-        return;
+        return skipBackupImportField("NTP servers were invalid - not imported");
       case "screen.schedule_wake_timeout":
-        S.schedule_wake_timeout = normalizeScheduleWakeTimeout(value);
-        postScheduleWakeTimeout(S.schedule_wake_timeout);
-        return;
+        trackBackupImportSave(saveSetting("schedule_wake_timeout", value));
+        return true;
       case "screen.rotation":
         var importedRotation = String(value);
         if (screenRotationOptionsForUi().indexOf(importedRotation) !== -1) {
-          S.screen_rotation = importedRotation;
-          post(endpoints.screen_rotation + "/set", { option: S.screen_rotation });
+          trackBackupImportSave(saveSetting("screen_rotation", importedRotation));
+          return true;
         }
-        return;
+        return skipBackupImportField("Screen rotation was invalid - not imported");
       default:
-        applyGenericBackupImportField(entry, value);
+        return applyGenericBackupImportField(entry, value);
     }
   }
 
@@ -2815,18 +2898,37 @@ if (typeof module !== "undefined") {
           return;
         }
 
-        if (!data.version) {
-          showBanner("Invalid config file \u2014 missing version", "error");
+        var versionError = validateBackupConfigVersion(data);
+        if (versionError) {
+          showBanner(versionError, "error");
           return;
         }
+        data = migrateBackupConfig(data);
 
+        backupImportSavePromises = [];
+        var appliedCount = 0;
+        var skippedCount = 0;
+        var needsPhotoSourceApply = false;
         BACKUP_SCHEMA.forEach(function (entry) {
           if (!backupImportFieldPresent(data, entry)) return;
-          applyBackupImportField(entry, backupImportFieldValue(data, entry));
+          if (applyBackupImportField(entry, backupImportFieldValue(data, entry))) {
+            appliedCount += 1;
+            needsPhotoSourceApply = needsPhotoSourceApply || backupImportEntryUsesPhotoSourceApply(entry);
+          } else {
+            skippedCount += 1;
+          }
         });
 
-        showBanner("Settings imported successfully", "success");
-        renderSettings();
+        Promise.all(backupImportSavePromises)
+          .then(function () {
+            if (needsPhotoSourceApply) return post(endpoints.apply_photo_source + "/press");
+            return null;
+          })
+          .then(function () {
+            showBanner(backupImportSummaryMessage(appliedCount, skippedCount), skippedCount ? "error" : "success");
+            renderSettings();
+            backupImportSavePromises = null;
+          });
       };
       reader.readAsText(fileInput.files[0]);
     });

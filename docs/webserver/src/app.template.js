@@ -8,6 +8,7 @@
   var MANUAL_ENTITIES = __ESPFRAME_MANUAL_ENTITIES__;
   var MANUAL_STATE_KEYS = __ESPFRAME_MANUAL_STATE_KEYS__;
   var ENTITY_ALIASES = __ESPFRAME_ENTITY_ALIASES__;
+  var BACKUP_CONFIG_VERSION = __ESPFRAME_BACKUP_CONFIG_VERSION__;
   var BACKUP_SCHEMA = __ESPFRAME_BACKUP_SCHEMA__;
   var LIVE_RENDER_STATE_KEYS = __ESPFRAME_LIVE_RENDER_STATE_KEYS__;
   var LIVE_RENDER_STATE_PREFIXES = __ESPFRAME_LIVE_RENDER_STATE_PREFIXES__;
@@ -193,6 +194,89 @@
       });
   }
 
+  var PHOTO_SOURCE_APPLY_SETTING_KEYS = [
+    "photo_source",
+    "album_ids",
+    "person_ids",
+    "date_filter_enabled",
+    "date_filter_mode",
+    "date_from",
+    "date_to",
+    "relative_amount",
+    "relative_unit"
+  ];
+
+  function settingUsesPhotoSourceApply(key) {
+    return PHOTO_SOURCE_APPLY_SETTING_KEYS.indexOf(key) !== -1;
+  }
+
+  function saveGenericSetting(key, value) {
+    if (!key || !endpoints[key]) return Promise.resolve(null);
+    var domain = settingEntityDomain(key);
+    var savedValue = value;
+    if (domain === "switch") savedValue = !!value;
+    if (domain === "number") {
+      var numberValue = Number(value);
+      if (isFinite(numberValue)) savedValue = numberValue;
+    }
+    if (domain === "select" || domain === "text") savedValue = value == null ? "" : String(value);
+    S[key] = savedValue;
+    if (domain === "switch") {
+      return post(endpoints[key] + (savedValue ? "/turn_on" : "/turn_off"));
+    }
+    if (domain === "select") {
+      return post(endpoints[key] + "/set", { option: savedValue });
+    }
+    if (domain === "number") {
+      return post(endpoints[key] + "/set", { value: savedValue });
+    }
+    if (domain === "text") {
+      return postTextValueSet(endpoints[key] + "/set", savedValue);
+    }
+    return Promise.resolve(null);
+  }
+
+  function saveNtpServer(key, value) {
+    var server = normalizeNtpServer(value);
+    S[key] = server;
+    return postTextValueSet(endpoints[key] + "/set", server);
+  }
+
+  function saveScheduleWakeTimeoutSetting(key, value) {
+    return saveGenericSetting(key, normalizeScheduleWakeTimeout(value));
+  }
+
+  function saveScreenRotationSetting(key, value) {
+    var rotation = String(value);
+    if (screenRotationOptionsForUi().indexOf(rotation) === -1) return Promise.resolve(null);
+    S.screen_rotation = rotation;
+    S.portrait_pairing = !isPortraitScreenRotation(rotation);
+    return Promise.all([
+      saveGenericSetting("screen_rotation", rotation),
+      saveGenericSetting("portrait_pairing", S.portrait_pairing)
+    ]);
+  }
+
+  var SETTING_SAVE_ADAPTERS = {
+    ntp_server_1: saveNtpServer,
+    ntp_server_2: saveNtpServer,
+    ntp_server_3: saveNtpServer,
+    schedule_wake_timeout: saveScheduleWakeTimeoutSetting,
+    screen_rotation: saveScreenRotationSetting
+  };
+
+  function saveSetting(key, value, options) {
+    var opts = options || {};
+    var adapter = SETTING_SAVE_ADAPTERS[key];
+    var result = adapter ? adapter(key, value, opts) : saveGenericSetting(key, value);
+    if (!opts.applyPhotoSource || !settingUsesPhotoSourceApply(key)) return result;
+    return Promise.resolve(result).then(function (saved) {
+      return post(endpoints.apply_photo_source + "/press").then(function () {
+        return saved;
+      });
+    });
+  }
+
   function makeConnectionUrlField(value) {
     var f = field("Immich Server URL");
     var urlInput = input("url", value, "http://192.168.0.1:2283");
@@ -242,12 +326,6 @@
     row.appendChild(mask);
     row.appendChild(cb);
     return row;
-  }
-
-  function saveNtpServer(key, value) {
-    var server = normalizeNtpServer(value);
-    S[key] = server;
-    return postTextValueSet(endpoints[key] + "/set", server);
   }
 
   __ESPFRAME_WEB_COMPAT_HELPERS__

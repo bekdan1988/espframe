@@ -176,7 +176,7 @@ def check_screen_rotation_metadata(product: dict, errors: list[str]) -> None:
         "productSettingOptions(\"screen_rotation\", S.developer_features_enabled)",
         "isPortraitScreenRotation",
         "Enable in-development features",
-        'post(endpoints.screen_rotation + "/set"',
+        'saveSetting("screen_rotation"',
     ):
         require_contains(web_template, needle, rel(WEB_TEMPLATE), errors)
     for needle in ("Rotation", "0 degrees"):
@@ -225,7 +225,7 @@ def check_developer_features_metadata(product: dict, errors: list[str]) -> None:
         "developer_features_saved",
         "developerPanelEnabledByUrl",
         "S.developer_features_enabled",
-        "post(endpoints.developer_features_enabled",
+        'saveSetting("developer_features_enabled"',
     ):
         if needle in {"hidden developer setting", "must stay off"}:
             require_contains(readme, needle, "README.md", errors)

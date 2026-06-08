@@ -258,24 +258,19 @@
       if (!vals) return;
       var requests = [];
       if (changes.source) {
-        S.photo_source = vals.source;
-        requests.push(post(endpoints.photo_source + "/set", { option: vals.source }));
+        requests.push(saveSetting("photo_source", vals.source));
       }
       if (changes.album) {
-        S.album_ids = vals.albumIds;
-        requests.push(postTextValueSet(endpoints.album_ids + "/set", vals.albumIds));
+        requests.push(saveSetting("album_ids", vals.albumIds));
       }
       if (changes.albumLabel) {
-        S.album_labels = vals.albumLabels;
-        requests.push(postTextValueSet(endpoints.album_labels + "/set", vals.albumLabels));
+        requests.push(saveSetting("album_labels", vals.albumLabels));
       }
       if (changes.person) {
-        S.person_ids = vals.personIds;
-        requests.push(postTextValueSet(endpoints.person_ids + "/set", vals.personIds));
+        requests.push(saveSetting("person_ids", vals.personIds));
       }
       if (changes.personLabel) {
-        S.person_labels = vals.personLabels;
-        requests.push(postTextValueSet(endpoints.person_labels + "/set", vals.personLabels));
+        requests.push(saveSetting("person_labels", vals.personLabels));
       }
       if (!requests.length) return;
       Promise.all(requests).then(function () {
@@ -510,12 +505,12 @@
       S.relative_unit = vals.unit;
       filterBadge.className = "on-badge" + (isFilterActive(S.date_filter_enabled) ? " active" : "");
       Promise.all([
-        post(endpoints.date_filter_enabled + (S.date_filter_enabled ? "/turn_on" : "/turn_off")),
-        post(endpoints.date_filter_mode + "/set", { option: modeVal }),
-        post(endpoints.date_from + "/set", { value: vals.from }),
-        post(endpoints.date_to + "/set", { value: vals.to }),
-        post(endpoints.relative_amount + "/set", { value: vals.amount }),
-        post(endpoints.relative_unit + "/set", { option: vals.unit })
+        saveSetting("date_filter_enabled", S.date_filter_enabled),
+        saveSetting("date_filter_mode", modeVal),
+        saveSetting("date_from", vals.from),
+        saveSetting("date_to", vals.to),
+        saveSetting("relative_amount", vals.amount),
+        saveSetting("relative_unit", vals.unit)
       ]).then(function () {
         post(endpoints.apply_photo_source + "/press");
       });
@@ -549,7 +544,7 @@
       if (portraitRotationActive) return;
       S.portrait_pairing = !S.portrait_pairing;
       pairTog.className = S.portrait_pairing ? "toggle on" : "toggle";
-      post(endpoints.portrait_pairing + (S.portrait_pairing ? "/turn_on" : "/turn_off"));
+      saveSetting("portrait_pairing", S.portrait_pairing);
     };
     pairTr.appendChild(pairTog);
     fPairToggle.appendChild(pairTr);
@@ -558,8 +553,7 @@
     var fPhotoOrientation = field("Photo Orientation");
     fPhotoOrientation.appendChild(
       selectFromOptions(productSettingOptions("photo_orientation"), S.photo_orientation, function (v) {
-        S.photo_orientation = v;
-        post(endpoints.photo_orientation + "/set", { option: v });
+        saveSetting("photo_orientation", v);
       })
     );
     photoBody.appendChild(fPhotoOrientation);
@@ -567,8 +561,7 @@
     var fDisplayMode = field("Display Mode");
     fDisplayMode.appendChild(
       selectFromOptions(productSettingOptions("display_mode"), S.display_mode, function (v) {
-        S.display_mode = v;
-        post(endpoints.display_mode + "/set", { option: v });
+        saveSetting("display_mode", v);
       })
     );
     photoBody.appendChild(fDisplayMode);
@@ -603,7 +596,7 @@
       S.photo_metadata_date_enabled = !S.photo_metadata_date_enabled;
       metadataDateTog.className = S.photo_metadata_date_enabled ? "toggle on" : "toggle";
       refreshMetadataDetails();
-      post(endpoints.photo_metadata_date_enabled + (S.photo_metadata_date_enabled ? "/turn_on" : "/turn_off"));
+      saveSetting("photo_metadata_date_enabled", S.photo_metadata_date_enabled);
     };
     metadataDateTr.appendChild(metadataDateTog);
     fMetadataDate.appendChild(metadataDateTr);
@@ -611,9 +604,8 @@
     var fMetadataDateFormat = field("Date Format");
     fMetadataDateFormat.appendChild(
       selectFromOptions(productSettingOptions("photo_metadata_date_format"), S.photo_metadata_date_format, function (v) {
-        S.photo_metadata_date_format = v;
+        saveSetting("photo_metadata_date_format", v);
         refreshMetadataDetails();
-        post(endpoints.photo_metadata_date_format + "/set", { option: v });
       })
     );
     metadataDateDetails.appendChild(fMetadataDateFormat);
@@ -621,8 +613,7 @@
     fMetadataDateTakenFormat = field("Date Taken Format");
     fMetadataDateTakenFormat.appendChild(
       selectFromOptions(productSettingOptions("photo_metadata_date_taken_format"), S.photo_metadata_date_taken_format, function (v) {
-        S.photo_metadata_date_taken_format = v;
-        post(endpoints.photo_metadata_date_taken_format + "/set", { option: v });
+        saveSetting("photo_metadata_date_taken_format", v);
       })
     );
     metadataDateDetails.appendChild(fMetadataDateTakenFormat);
@@ -635,7 +626,7 @@
       S.photo_metadata_location_enabled = !S.photo_metadata_location_enabled;
       metadataLocationTog.className = S.photo_metadata_location_enabled ? "toggle on" : "toggle";
       refreshMetadataDetails();
-      post(endpoints.photo_metadata_location_enabled + (S.photo_metadata_location_enabled ? "/turn_on" : "/turn_off"));
+      saveSetting("photo_metadata_location_enabled", S.photo_metadata_location_enabled);
     };
     metadataLocationTr.appendChild(metadataLocationTog);
     fMetadataLocation.appendChild(metadataLocationTr);

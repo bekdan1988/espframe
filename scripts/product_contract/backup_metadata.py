@@ -23,8 +23,9 @@ def check_backup_metadata(product: dict, errors: list[str]) -> None:
 
     if isinstance(config_version, int) and not isinstance(config_version, bool):
         require_contains(backup_docs, f'"version": {config_version}', "docs/backup.md", errors)
-        require_contains(web_template, f"version: {config_version}", rel(WEB_TEMPLATE), errors)
-        require_contains(web_text, f"version: {config_version}", rel(WEB_APP), errors)
+        require_contains(web_template, "version: BACKUP_CONFIG_VERSION", rel(WEB_TEMPLATE), errors)
+        require_contains(web_template, "var BACKUP_CONFIG_VERSION = __ESPFRAME_BACKUP_CONFIG_VERSION__", rel(WEB_TEMPLATE), errors)
+        require_contains(web_text, f"var BACKUP_CONFIG_VERSION = {config_version}", rel(WEB_APP), errors)
     if filename_prefix:
         require_contains(backup_docs, f"`{filename_prefix}{date_format}.json`", "docs/backup.md", errors)
         require_contains(web_template, f'var name = "{filename_prefix}"', rel(WEB_TEMPLATE), errors)
