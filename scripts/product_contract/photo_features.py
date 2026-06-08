@@ -270,7 +270,7 @@ def check_connection_resilience_metadata(product: dict, errors: list[str]) -> No
         require_contains(immich_config_yaml, needle, "common/addon/immich_config.yaml", errors)
     for needle in (
         "Connection Timeout",
-        "productSettingOptions(\"conn_timeout\")",
+        'productSelectSettingField("Connection Timeout", "conn_timeout")',
         "conn_timeout",
     ):
         require_contains(web_template, needle, rel(WEB_TEMPLATE), errors)
