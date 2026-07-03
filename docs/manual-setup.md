@@ -37,7 +37,7 @@ esphome run esphome.yaml
 First build takes a few minutes; OTA updates are faster.
 
 ::: info ESPHome version
-Current local builds use ESPHome `2026.5.3`. The shared configuration includes compatibility fixes for ESPHome 2026.3 and 2026.4 LVGL changes.
+Current local builds use ESPHome `2026.6.4`. The shared configuration includes compatibility fixes for ESPHome 2026.3 and 2026.4 LVGL changes.
 :::
 
 ## Substitutions
