@@ -553,6 +553,9 @@ function runChrome(args, timeoutMs) {
     });
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    let timer = null;
+    let forceResolveTimer = null;
 
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
@@ -563,17 +566,28 @@ function runChrome(args, timeoutMs) {
       stderr += chunk;
     });
 
-    const timer = setTimeout(() => {
+    function finish(result) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearTimeout(forceResolveTimer);
+      resolve(result);
+    }
+
+    timer = setTimeout(() => {
+      stderr += `\nChrome timed out after ${timeoutMs}ms`;
       try {
         process.kill(-child.pid, "SIGKILL");
       } catch (_) {
         child.kill("SIGKILL");
       }
+      forceResolveTimer = setTimeout(() => {
+        finish({ status: null, signal: "timeout", stdout, stderr });
+      }, 1000);
     }, timeoutMs);
 
     child.on("close", (status, signal) => {
-      clearTimeout(timer);
-      resolve({ status, signal, stdout, stderr });
+      finish({ status, signal, stdout, stderr });
     });
   });
 }
