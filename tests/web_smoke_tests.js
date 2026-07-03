@@ -547,7 +547,9 @@ function htmlForScenario(scenario) {
 
 function runChrome(args, timeoutMs) {
   return new Promise((resolve) => {
+    const useProcessGroup = process.platform !== "win32";
     const child = spawn(chromePath, args, {
+      detached: useProcessGroup,
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
@@ -565,6 +567,14 @@ function runChrome(args, timeoutMs) {
 
     const timer = setTimeout(() => {
       timedOut = true;
+      if (useProcessGroup) {
+        try {
+          process.kill(-child.pid, "SIGKILL");
+          return;
+        } catch (_) {
+          // Fall back to killing the browser wrapper if the process group is already gone.
+        }
+      }
       child.kill("SIGKILL");
     }, timeoutMs);
 
