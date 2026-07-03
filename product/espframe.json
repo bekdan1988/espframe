@@ -434,8 +434,8 @@
     "public_base_url": "https://jtenniswood.github.io/espframe",
     "release_url_base": "https://github.com/jtenniswood/espframe/releases/tag/",
     "release_workflow_actions": {
-      "checkout": "actions/checkout@v6",
-      "cache": "actions/cache@v5",
+      "checkout": "actions/checkout@v7",
+      "cache": "actions/cache@v6",
       "upload_artifact": "actions/upload-artifact@v7",
       "download_artifact": "actions/download-artifact@v8",
       "setup_node": "actions/setup-node@v6",
@@ -736,7 +736,7 @@
     "esphome_docker_image": "ghcr.io/esphome/esphome",
     "esphome_config_mount": "/config",
     "esphome_docker_remove_container": true,
-    "esphome_version": "2026.5.3"
+    "esphome_version": "2026.6.4"
   },
   "devices": [
     {
