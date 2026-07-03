@@ -283,8 +283,8 @@ script:
   # Fetch a random asset from Album and Person sources using paged metadata search.
   #
   # Metadata search is stable and supports page/size. The frame reads a small
-  # candidate page, then asks for a random page and picks a random item from it
-  # so Immich versions with page-limited counts do not repeat the newest photo.
+  # candidate page to detect page-limited counts, then uses random paging for
+  # reliable totals so large libraries are not limited to repeated newest photos.
   # ---------------------------------------------------------------------------
   - id: immich_fetch_metadata_into_slot
     mode: single
@@ -381,7 +381,7 @@ script:
                     return;
                   }
                   std::string orientation = id(photo_orientation_filter).current_option();
-                  id(immich_metadata_page_size) = IMMICH_METADATA_PAGE_SIZE;
+                  id(immich_metadata_page_size) = orientation == "Any" ? 1 : IMMICH_METADATA_PAGE_SIZE;
                   id(immich_metadata_page) = immich_metadata_page_for_total(
                     total, id(immich_metadata_page_size));
                   ESP_LOGD("immich", "Metadata source selected: page %d size %d of %u images",
