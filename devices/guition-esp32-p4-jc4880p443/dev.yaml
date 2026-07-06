@@ -5,8 +5,8 @@
 # =============================================================================
 
 substitutions:
-  name: "immich-frame-10inch-dev"
-  friendly_name: "Immich Frame 10inch Dev"
+  name: "immich-frame-43inch-dev"
+  friendly_name: "Immich Frame 43inch Dev"
   espframe_component_url: "../.."
   espframe_component_ref: "HEAD"
 
