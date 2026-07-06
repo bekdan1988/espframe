@@ -1,10 +1,10 @@
 # =============================================================================
-# HARDWARE CONFIGURATION - Guition ESP32-P4-JC8012P4A1
+# HARDWARE CONFIGURATION - Guition ESP32-P4-JC4880P443
 # =============================================================================
 # Base device config: ESP32-P4 host, ESP32-C6 coprocessor (WiFi/BT over SDIO),
-# PSRAM, display (MIPI DSI JC8012P4A1), touch (GSL3680), backlight, I2C. Also
+# PSRAM, display (MIPI DSI JC4880P443), touch (GT911), backlight, I2C. Also
 # API, logger, web server, OTA, and espframe external components. Display is
-# 800×1280 logical (rotation 90).
+# 480×800 logical (rotation 90).
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -166,17 +166,17 @@ i2c:
     scl_pullup_enabled: false
 
 # -----------------------------------------------------------------------------
-# MIPI DSI display (JC8012P4A1, 800×1280, rotation 90)
+# MIPI DSI display (JC4880P443, 800×1280, rotation 90)
 # -----------------------------------------------------------------------------
 display:
   - platform: mipi_dsi
-    model: JC8012P4A1
+    model: JC4880P443
     id: tft_display
     reset_pin: GPIO27
     auto_clear_enabled: false
     update_interval: never
     color_order: RGB
-    # Match Guition's JD9365 reference driver for the JC8012P4A1C_I_W_Y panel.
+    # Match Guition's JD9365 reference driver for the JC4880P443_I_W_Y panel.
     pclk_frequency: 60MHz
     lane_bit_rate: 1500Mbps
     hsync_pulse_width: 20
@@ -186,14 +186,14 @@ display:
     vsync_back_porch: 8
     vsync_front_porch: 20
     dimensions:
-      width: 800
-      height: 1280
+      width: 480
+      height: 800
 
 # -----------------------------------------------------------------------------
-# Touch (GSL3680, transform for orientation)
+# Touch (GT911, transform for orientation)
 # -----------------------------------------------------------------------------
 touchscreen:
-  - platform: gsl3680
+  - platform: gt911
     id: tft_touch
     display: tft_display
     reset_pin: GPIO22
