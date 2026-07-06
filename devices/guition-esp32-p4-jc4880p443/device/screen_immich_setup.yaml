@@ -27,7 +27,7 @@ lvgl:
             widgets:
               - obj:
                   align: center
-                  width: 700
+                  width: 380
                   height: SIZE_CONTENT
                   bg_opa: 0%
                   border_width: 0
