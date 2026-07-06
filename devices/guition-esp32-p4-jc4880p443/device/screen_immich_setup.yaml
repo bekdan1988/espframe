@@ -50,24 +50,24 @@ lvgl:
                         text: "Immich Setup"
                         text_font: noto_400_46_font
                         text_color: 0xFFFFFF
-                        width: 700
+                        width: 380
                         text_align: center
                     - label:
                         text: "Open your browser and go to"
                         text_font: noto_400_30_font
                         text_color: 0x888888
-                        width: 700
+                        width: 380
                         text_align: center
                     - label:
                         id: setup_ip_label
                         text: "http://..."
                         text_font: noto_400_46_font
                         text_color: 0xFFFFFF
-                        width: 700
+                        width: 380
                         text_align: center
                     - label:
                         text: "to configure your Immich URL\nand API key"
                         text_font: noto_400_30_font
                         text_color: 0x888888
-                        width: 700
+                        width: 380
                         text_align: center
