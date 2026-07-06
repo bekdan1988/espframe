@@ -1,5 +1,5 @@
 # =============================================================================
-# DEV CONFIG - Local development entry point (Guition ESP32-P4 JC8012P4A1)
+# DEV CONFIG - Local development entry point (Guition ESP32-P4 JC4880P443)
 # =============================================================================
 # Flash with: esphome run dev.yaml
 # =============================================================================
