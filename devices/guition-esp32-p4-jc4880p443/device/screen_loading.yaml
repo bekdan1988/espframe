@@ -73,14 +73,14 @@ lvgl:
                   text: "Starting up"
                   text_font: noto_400_46_font
                   text_color: 0xFFFFFF
-                  width: 700
+                  width: 380
                   text_align: center
               - label:
                   id: loading_status_label
                   text: "Booting"
                   text_font: noto_400_32_font
                   text_color: 0x888888
-                  width: 700
+                  width: 380
                   text_align: center
               - bar:
                   id: loading_progress_bar
