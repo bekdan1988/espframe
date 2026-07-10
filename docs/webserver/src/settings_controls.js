@@ -19,6 +19,7 @@
       makeClockCard: makeClockCard,
       makeFirmwareCard: makeFirmwareCard,
       makeWifiCard: makeWifiCard,
+      makeDeviceRebootCard: makeDeviceRebootCard,
       makeDeveloperCard: makeDeveloperCard,
       makeBackupCard: makeBackupCard
     };
@@ -36,8 +37,8 @@
   }
 
   function renderSettings() {
-    app.innerHTML = "";
-    immichApp.innerHTML = "";
+    app.replaceChildren();
+    immichApp.replaceChildren();
     var immichWrap = el("div", "fade-in");
     var wrap = el("div", "fade-in");
 
@@ -63,7 +64,8 @@
       makeFirmwareCard(),
       makeWifiCard(),
       makeDeveloperCard(),
-      makeBackupCard()
+      makeBackupCard(),
+      makeDeviceRebootCard()
     ];
     appendCards(wrap, settingsCards);
     app.appendChild(wrap);

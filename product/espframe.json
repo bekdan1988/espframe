@@ -53,10 +53,8 @@
     "network_wifi_strength_update_interval": "60s",
     "firmware_update_methods": ["OTA", "HTTP"],
     "firmware_update_source": "GitHub Pages",
-    "firmware_update_channels": ["stable", "beta"],
-    "firmware_beta_channel_label": "pre-release",
+    "firmware_update_channels": ["stable"],
     "firmware_manual_check_behavior": "only checks for updates; it does not install",
-    "firmware_beta_check_requirement": "Beta Channel must be enabled to check for pre-release firmware",
     "firmware_custom_manifest_requirement": "full http:// or https:// URL",
     "firmware_manifest_url_length_limit": 255,
     "firmware_update_frequency_hours": { "Hourly": 1, "Daily": 24, "Weekly": 168, "Monthly": 720 },
@@ -90,7 +88,7 @@
         "display_mode"
       ],
       "frequency": ["interval", "conn_timeout"],
-      "firmware_updates": ["auto_update", "beta_channel", "update_frequency", "manifest_url", "beta_manifest_url"],
+      "firmware_updates": ["auto_update", "update_frequency", "manifest_url"],
       "clock": ["show", "format", "timezone", "ntp_servers"],
       "screen": [
         "brightness_day",
@@ -137,10 +135,8 @@
       },
       "firmware_updates": {
         "auto_update": "auto_update",
-        "beta_channel": "beta_channel",
         "update_frequency": "update_frequency",
-        "manifest_url": "firmware_manifest_url",
-        "beta_manifest_url": "firmware_beta_manifest_url"
+        "manifest_url": "firmware_manifest_url"
       },
       "clock": {
         "show": "show_clock",
@@ -193,8 +189,7 @@
         {
           "path": "tests/fixtures/compat/espframe-config-v1-invalid-manifest-urls.json",
           "messages": [
-            "Stable firmware URL was invalid - not imported",
-            "Beta firmware URL was invalid - not imported"
+            "Stable firmware URL was invalid - not imported"
           ]
         }
       ],
@@ -409,9 +404,18 @@
         "label": "Firmware",
         "tab": "settings",
         "function": "makeFirmwareCard",
-        "settings": ["update_frequency", "auto_update", "beta_channel", "firmware_manifest_url", "firmware_beta_manifest_url"],
+        "settings": ["update_frequency", "auto_update", "firmware_manifest_url"],
         "static_entities": ["firmware"],
-        "manual_entities": ["update", "update_beta", "firmware_check", "reboot_screen"]
+        "manual_entities": ["update", "firmware_check"]
+      },
+      {
+        "id": "device_reboot",
+        "label": "Device Reboot",
+        "tab": "settings",
+        "function": "makeDeviceRebootCard",
+        "settings": [],
+        "static_entities": [],
+        "manual_entities": ["reboot_screen"]
       },
       {
         "id": "wifi",
@@ -439,7 +443,24 @@
     "web_ui_logs_event_name": "log",
     "web_ui_logs_clear_label": "Clear",
     "web_ui_logs_retained_lines": 1000,
-    "web_live_render_state_keys": ["screen_rotation", "portrait_pairing", "developer_features_enabled", "beta_channel"],
+    "web_smoke_required_scenarios": [
+      "wizard",
+      "wizard-connection-save",
+      "settings",
+      "settings-mobile",
+      "photo-source-reorder",
+      "screen-rotation-developer",
+      "screen-tone-schedule",
+      "daily-settings-controls",
+      "backup-import-success",
+      "backup-import-save-failure",
+      "backup-import-partial",
+      "backup-import-rejected",
+      "backup-import-missing-version",
+      "backup-import-future-version",
+      "backup-import-unsupported-version"
+    ],
+    "web_live_render_state_keys": ["screen_rotation", "portrait_pairing", "developer_features_enabled"],
     "web_live_render_state_prefixes": ["photo_metadata_", "schedule_"],
     "web_initial_fetch_first_keys": ["firmware"],
     "web_static_entities": {
@@ -472,7 +493,6 @@
       "api_key": { "entity": "text/Connection: API Key", "firmware_file": "common/addon/immich_config.yaml" },
       "backlight": { "entity": "light/Screen: Backlight", "firmware_file": "common/addon/backlight.yaml" },
       "update": { "entity": "update/Firmware: Update", "firmware_file": "common/addon/firmware_update.yaml" },
-      "update_beta": { "entity": "update/Firmware: Update Beta", "firmware_file": "common/addon/firmware_update.yaml" },
       "apply_photo_source": { "entity": "button/Apply Photo Source", "firmware_file": "common/addon/immich_filter.yaml" },
       "firmware_check": { "entity": "button/Firmware: Check for Update", "firmware_file": "common/addon/firmware_update.yaml" },
       "c6_firmware_check": { "entity": "button/Firmware ESP32-C6: Check for Update", "firmware_file": "common/addon/esp32_c6_firmware_update.yaml" },
@@ -521,15 +541,13 @@
       "docs/firmware-update.md": {
         "firmware_controls": {
           "columns": ["Control", "Type", "Default", "Description"],
-          "settings": ["auto_update", "beta_channel", "update_frequency", "firmware_manifest_url", "firmware_beta_manifest_url"]
+          "settings": ["auto_update", "update_frequency", "firmware_manifest_url"]
         }
       }
     },
     "web_local_state_keys": [
       "api_key",
       "backlight_on",
-      "beta_available",
-      "beta_version",
       "brightness",
       "brightness_current",
       "immich_url",
@@ -554,6 +572,12 @@
     "package_name": "jtenniswood.immich-frame",
     "repository_url": "https://github.com/jtenniswood/espframe",
     "github_default_branch": "main",
+    "github_pull_request_template_path": ".github/pull_request_template.md",
+    "github_pull_request_device_testing_options": [
+      "Not needed for this change",
+      "PR Validation artifact flashed to device",
+      "Needs device testing before merge"
+    ],
     "public_base_url": "https://jtenniswood.github.io/espframe",
     "release_url_base": "https://github.com/jtenniswood/espframe/releases/tag/",
     "release_workflow_actions": {
@@ -625,7 +649,6 @@
       }
     ],
     "release_changelog_fallback_category": "Other changes",
-    "phase_1_status_note": "docs/phase-1-product-metadata.md",
     "docs_firmware_verify_retries": 10,
     "docs_firmware_verify_delay_seconds": 15,
     "github_docs_release_meta_step_id": "release-meta",
@@ -634,6 +657,9 @@
     "github_docs_prerelease_tag_env": "BETA_TAG",
     "docs_dist_artifact_name": "docs-dist",
     "docs_firmware_artifact_name": "firmware",
+    "compile_firmware_artifact_prefix": "firmware-test-",
+    "compile_firmware_output_dir": "output",
+    "compile_firmware_version_prefix": "pr",
     "docs_dist_output_path": "docs/.vitepress/dist",
     "docs_deploy_path": "dist",
     "github_pages_environment": "github-pages",
@@ -708,6 +734,7 @@
     ],
     "generated_firmware_setting_fields": {
       "photo_source": {},
+      "album_order": {},
       "date_filter_mode": {},
       "relative_unit": {},
       "photo_orientation": {},
@@ -722,19 +749,10 @@
       "clock_format": {},
       "update_frequency": {},
       "auto_update": {},
-      "beta_channel": {},
       "firmware_manifest_url": {
         "optimistic": false,
         "restore_value": true,
         "initial_value": "${firmware_manifest_url}",
-        "min_length": 0,
-        "max_length": 255,
-        "mode": "text"
-      },
-      "firmware_beta_manifest_url": {
-        "optimistic": false,
-        "restore_value": true,
-        "initial_value": "${firmware_beta_manifest_url}",
         "min_length": 0,
         "max_length": 255,
         "mode": "text"
@@ -770,6 +788,7 @@
       "photo_metadata_date_enabled": {},
       "photo_metadata_location_enabled": {}
     },
+    "generated_firmware_deferred_setting_fields": [],
     "support_url": "https://www.buymeacoffee.com/jtenniswood",
     "support_button_image_url": "https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png",
     "node_version": "24",
@@ -824,6 +843,7 @@
     "github_workflow_jobs": {
       "compile": {
         "validate": "Validate PR Gate",
+        "firmware-metadata": "Read Firmware Build Metadata",
         "compile": "Compile Firmware"
       },
       "docs": {
@@ -839,13 +859,29 @@
       }
     },
     "github_workflow_job_dependencies": {
-      "compile.compile": ["validate"],
+      "compile.compile": ["validate", "firmware-metadata"],
       "docs.deploy-docs": ["build-docs", "download-firmware"],
       "release.build-firmware": ["release-metadata"],
       "release.publish": ["build-firmware", "release-metadata"]
     },
+    "github_workflow_job_conditions": {
+      "compile.validate": null,
+      "compile.firmware-metadata": "github.event_name == 'workflow_dispatch'",
+      "compile.compile": "github.event_name == 'workflow_dispatch'",
+      "docs.build-docs": "github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'",
+      "docs.download-firmware": "github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'",
+      "docs.deploy-docs": null,
+      "release.release-metadata": null,
+      "release.release-notes": "github.event_name == 'release'",
+      "release.build-firmware": null,
+      "release.publish": "github.event_name == 'release'"
+    },
     "github_sparse_checkout_files": [
       "scripts/firmware_release.py",
+      "scripts/product_config.py",
+      "product/espframe.json"
+    ],
+    "github_metadata_sparse_checkout_files": [
       "scripts/product_config.py",
       "product/espframe.json"
     ],
@@ -947,8 +983,7 @@
         "screen_rotation_180": "270",
         "screen_rotation_270": "0",
         "captive_portal_ip": "192.168.4.1",
-        "firmware_manifest_url": "https://jtenniswood.github.io/espframe/firmware/manifest.json",
-        "firmware_beta_manifest_url": "https://jtenniswood.github.io/espframe/firmware/beta/manifest.json"
+        "firmware_manifest_url": "https://jtenniswood.github.io/espframe/firmware/manifest.json"
       },
       "font_assets": [
         { "id": "noto_325_150_font", "file": "gfonts://Noto Sans@325", "size": 150, "bpp": 4 },
@@ -1127,16 +1162,6 @@
       "docs_files": ["docs/firmware-update.md"]
     },
     {
-      "key": "beta_channel",
-      "entity": { "domain": "switch", "name": "Firmware: Beta Channel" },
-      "default": false,
-      "docs_label": "Beta Channel",
-      "docs_default": "Off",
-      "docs_description": "Opt in to pre-release firmware checks",
-      "firmware_files": ["common/addon/firmware_update.yaml"],
-      "docs_files": ["docs/firmware-update.md"]
-    },
-    {
       "key": "firmware_manifest_url",
       "entity": { "domain": "text", "name": "Firmware: Manifest URL" },
       "default": "",
@@ -1144,17 +1169,6 @@
       "docs_default": "Device default",
       "docs_type": "Text",
       "docs_description": "Advanced: custom stable update manifest",
-      "firmware_files": ["common/addon/firmware_update.yaml"],
-      "docs_files": ["docs/firmware-update.md"]
-    },
-    {
-      "key": "firmware_beta_manifest_url",
-      "entity": { "domain": "text", "name": "Firmware: Beta Manifest URL" },
-      "default": "",
-      "docs_label": "Beta Manifest URL",
-      "docs_default": "Device default",
-      "docs_type": "Text",
-      "docs_description": "Advanced: custom pre-release update manifest",
       "firmware_files": ["common/addon/firmware_update.yaml"],
       "docs_files": ["docs/firmware-update.md"]
     },

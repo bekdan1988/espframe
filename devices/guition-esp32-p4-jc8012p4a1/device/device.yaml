@@ -126,6 +126,11 @@ web_server:
 
 ota:
   - platform: esphome
+    on_begin:
+      then:
+        - lambda: |-
+            id(firmware_update_reboot_pending) = true;
+            global_preferences->sync();
 
 # -----------------------------------------------------------------------------
 # External components (espframe: gsl3680, remote_image, espframe)

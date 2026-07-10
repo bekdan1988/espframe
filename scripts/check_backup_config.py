@@ -120,6 +120,7 @@ def validate_fixture(
     if isinstance(photos, dict):
         for key, setting_key in (
             ("source", "photo_source"),
+            ("album_order", "album_order"),
             ("date_filter_mode", "date_filter_mode"),
             ("relative_unit", "relative_unit"),
             ("orientation", "photo_orientation"),
@@ -175,7 +176,6 @@ def validate_web_support(product: dict[str, Any], errors: list[str]) -> None:
             "photos.tag_ids",
             "photos.tag_labels",
             "firmware_updates.manifest_url",
-            "firmware_updates.beta_manifest_url",
             "clock.timezone",
             "clock.ntp_servers",
             "screen.schedule_wake_timeout",

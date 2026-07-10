@@ -9,11 +9,15 @@ Phase 4 turns the reset architecture into a release-confidence system. The web U
 
 ## What is now release-proven
 
-- Browser smoke coverage exercises first setup, existing-device settings, photo source modes, date filtering, backup export/import, rejected import behavior, firmware update states, logs, and a mobile-width render check.
-- Compatibility fixtures now cover every exported backup group: connection, photos, frequency, firmware updates, clock, and screen.
+- Browser smoke coverage exercises first setup, connection saving, existing-device settings, photo source modes, date filtering, layout and metadata controls, clock and NTP controls, screen tone and night schedule controls, screen rotation developer safeguards, backup export/import, rejected import behavior, firmware update states, logs, and a mobile-width render check.
+- Product contract checks now guard the required browser smoke scenarios, so release-critical web flows cannot be removed from coverage silently.
+- Compatibility fixtures now cover every exported backup group and field: connection, photos, frequency, firmware updates, clock, and screen.
 - Compatibility checks keep backup JSON at version 1 and verify that all product-owned backup fields still map to valid device endpoints.
 - Firmware generation checks now verify generated field markers stay in safe entity-field sections, not handwritten lambdas, scripts, actions, or LVGL layout blocks.
-- The release-readiness command runs the normal local gate and reports whether the repository is clean before publishing. Firmware releases can use the compile-aware variant so ESPHome factory builds are not missed.
+- Product-owned firmware setting fields now use an explicit deferred-setting allow-list, which is empty for the current product contract.
+- The manual PR Validation workflow builds downloadable factory and OTA firmware artifacts for feature branches, so PR firmware can be tested on a device before merge without publishing it as release firmware.
+- Product contract checks now guard GitHub workflow job conditions, keeping PR validation automatic, manual firmware builds from publishing accidentally, and docs deployment gated after release builds.
+- The release-readiness command runs the normal local gate and reports whether the repository is clean before publishing. Firmware releases can use the compile-aware variant so ESPHome factory and OTA builds are not missed, with fast tests covering package script parsing, release-ready Docker commands, and workflow condition parsing.
 
 ## Release checklist
 

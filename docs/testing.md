@@ -15,10 +15,10 @@ This is the normal confidence check for feature branches. It verifies generated 
 Before publishing a firmware release, run:
 
 ```sh
-npm run check:release
+npm run check:release-ready-with-compile
 ```
 
-This includes the pull request checks, then adds release-specific firmware manifest and changelog checks.
+This runs the full release validation, checks the working tree is clean, and compiles both factory and OTA firmware with ESPHome Docker. If you only need the non-compile release gate while iterating, run `npm run check:release`.
 
 For the fastest local check while editing metadata, generated assets, or compatibility fixtures, run:
 
@@ -44,7 +44,15 @@ This group checks generated files, product metadata, backup configuration, compa
 npm run test:web
 ```
 
-This group checks the generated web app bundle, compatibility helpers, and browser smoke coverage. The browser smoke test opens the web UI in Chrome or Chromium and exercises the main setup, settings, firmware update, and backup import flows.
+This group checks the generated web app bundle, compatibility helpers, focused smoke-test command options, and browser smoke coverage. The browser smoke test opens the web UI in Chrome or Chromium and exercises the main setup, settings, firmware update, and backup import flows.
+
+When you are working on one browser flow, run a single smoke scenario while iterating:
+
+```sh
+npm run test:web-smoke -- --scenario wizard-connection-save
+```
+
+Use `npm run test:web-smoke -- --list` to see the available scenario names. Run the full `npm run test:web-smoke` suite before committing web UI behavior changes.
 
 ### Firmware Logic Checks
 
@@ -56,13 +64,21 @@ This group compiles and runs host-side C++ tests for firmware helper logic, then
 
 ### Full Firmware Compile
 
-The pull request workflow compiles the 10-inch P4 factory firmware after the PR checks pass. GitHub runs this automatically on every pull request as the `Compile Firmware` check. To run the same type of compile locally with Docker:
+Pull requests run the normal validation gate automatically. Full ESPHome firmware builds are slower, so they are available from the **PR Validation** workflow's manual run button. Run that workflow against a feature branch when you need firmware files to test on a device before merging.
+
+The manual workflow builds both factory and OTA firmware and uploads a `firmware-test-<device>` artifact containing:
+
+- `<device>.factory.bin` for USB/browser flashing
+- `<device>.ota.bin` for OTA testing
+- `<device>.version.txt` with the branch build version and source commit
+
+To run the same factory compile locally with Docker:
 
 ```sh
 docker run --rm -v "${PWD}:/config" ghcr.io/esphome/esphome:2026.6.4 compile /config/builds/guition-esp32-p4-jc8012p4a1.factory.yaml
 ```
 
-Use a full compile before firmware releases, after changing ESPHome YAML, and after changing C++ code that is not covered by the host-side helper tests.
+Use a full compile before firmware releases, after changing ESPHome YAML, after changing C++ code that is not covered by the host-side helper tests, and whenever you want a branch firmware build to flash to a test display.
 
 ## When To Add Tests
 
@@ -82,7 +98,7 @@ Automated checks do not prove everything that happens on the physical display. D
 
 A useful manual pass is:
 
-- flash the PR build to a test display
+- run the manual **PR Validation** workflow for the branch and flash the downloaded firmware artifact to a test display
 - confirm WiFi setup and Immich setup still work
 - confirm the slideshow starts and advances photos
 - check touch wake, sleep, and next-photo gestures

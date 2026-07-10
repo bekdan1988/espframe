@@ -127,14 +127,6 @@
         S.installed_version !== S.latest_version;
       return;
     }
-    if (id === "update/Firmware: Update Beta") {
-      S.beta_version = d.latest_version || "";
-      S.beta_available =
-        S.beta_version &&
-        d.current_version &&
-        S.beta_version !== d.current_version;
-      return;
-    }
     var spec = ENTITY_STATE_MAP[id];
     if (!spec) return;
     var v = d.value != null ? d.value : d.state;
@@ -156,14 +148,6 @@
     if (spec.key === "photo_metadata_date_taken_format") {
       S[spec.key] = normalizeDateTakenFormat(S[spec.key]);
     }
-  }
-
-  function normalizeDateTakenFormat(value) {
-    if (value === "January 1, 2026" || value === "January 1, 2000" || value === "Month Day, Year" ||
-        value === "Month Day Ordinal, Year") {
-      return "January 1, 2026";
-    }
-    return "1 January, 2026";
   }
 
   function collectState(d) {

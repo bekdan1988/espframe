@@ -4,18 +4,172 @@ import re
 
 from product_contract.common import ROOT, check_relative_path, read
 
+
+EXPECTED_RELEASE_WORKFLOW_ACTIONS = {
+    "cache",
+    "checkout",
+    "deploy_pages",
+    "download_artifact",
+    "setup_node",
+    "upload_artifact",
+    "upload_pages_artifact",
+}
+
+
+def check_release_workflow_actions(release_actions: object, errors: list[str]) -> None:
+    if not isinstance(release_actions, dict) or not release_actions:
+        errors.append("project.release_workflow_actions must be a non-empty object")
+        return
+
+    configured_actions = {str(name).strip() for name in release_actions if str(name).strip()}
+    missing_actions = sorted(EXPECTED_RELEASE_WORKFLOW_ACTIONS - configured_actions)
+    extra_actions = sorted(configured_actions - EXPECTED_RELEASE_WORKFLOW_ACTIONS)
+    if missing_actions:
+        errors.append(f"project.release_workflow_actions is missing actions: {', '.join(missing_actions)}")
+    if extra_actions:
+        errors.append(f"project.release_workflow_actions contains unknown actions: {', '.join(extra_actions)}")
+    for raw_name, raw_action in release_actions.items():
+        name = str(raw_name).strip()
+        if not name:
+            errors.append("project.release_workflow_actions keys must be non-empty strings")
+        if not isinstance(raw_action, str) or not raw_action.strip():
+            errors.append(f"project.release_workflow_actions.{name or '<missing>'} must be a non-empty string")
+
+
+def workflow_event_index(workflow_events: object) -> set[str]:
+    if not isinstance(workflow_events, dict):
+        return set()
+
+    configured_workflow_events: set[str] = set()
+    for raw_workflow, raw_events in workflow_events.items():
+        workflow = str(raw_workflow).strip()
+        if not workflow or not isinstance(raw_events, list):
+            continue
+        events = {str(raw_event).strip() for raw_event in raw_events if str(raw_event).strip()}
+        configured_workflow_events.update(f"{workflow}.{event}" for event in events)
+    return configured_workflow_events
+
+
+def check_workflow_event_types(
+    workflow_event_types: object,
+    configured_workflow_events: set[str],
+    errors: list[str],
+) -> None:
+    if not isinstance(workflow_event_types, dict) or not workflow_event_types:
+        errors.append("project.github_workflow_event_types must be a non-empty object")
+        return
+
+    for raw_key, raw_types in workflow_event_types.items():
+        key = str(raw_key).strip()
+        label = f"project.github_workflow_event_types.{key or '<missing>'}"
+        workflow, _, event_name = key.partition(".")
+        if not workflow or not event_name:
+            errors.append(f"{label} must use workflow.event format")
+        elif key not in configured_workflow_events:
+            errors.append(f"{label} must point at a known workflow event")
+        if not isinstance(raw_types, list) or not raw_types:
+            errors.append(f"{label} must be a non-empty list")
+            continue
+        event_types = [str(event_type).strip() for event_type in raw_types]
+        if any(not event_type for event_type in event_types):
+            errors.append(f"{label} must only contain non-empty strings")
+        if len(event_types) != len(set(event_types)):
+            errors.append(f"{label} must not contain duplicate event types")
+
+
+def workflow_job_index(workflow_jobs: object) -> tuple[set[str], dict[str, set[str]]]:
+    if not isinstance(workflow_jobs, dict):
+        return set(), {}
+
+    configured_workflow_jobs: set[str] = set()
+    jobs_by_workflow: dict[str, set[str]] = {}
+    for raw_workflow, raw_jobs in workflow_jobs.items():
+        workflow = str(raw_workflow).strip()
+        if not workflow or not isinstance(raw_jobs, dict):
+            continue
+        job_ids = {str(raw_job_id).strip() for raw_job_id in raw_jobs if str(raw_job_id).strip()}
+        if not job_ids:
+            continue
+        configured_workflow_jobs.update(f"{workflow}.{job_id}" for job_id in job_ids)
+        jobs_by_workflow[workflow] = job_ids
+    return configured_workflow_jobs, jobs_by_workflow
+
+
+def check_workflow_job_dependencies(
+    workflow_job_dependencies: object,
+    configured_workflow_jobs: set[str],
+    jobs_by_workflow: dict[str, set[str]],
+    errors: list[str],
+) -> None:
+    if not isinstance(workflow_job_dependencies, dict) or not workflow_job_dependencies:
+        errors.append("project.github_workflow_job_dependencies must be a non-empty object")
+        return
+
+    for raw_key, raw_dependencies in workflow_job_dependencies.items():
+        key = str(raw_key).strip()
+        label = f"project.github_workflow_job_dependencies.{key or '<missing>'}"
+        workflow, _, job_id = key.partition(".")
+        if not workflow or not job_id:
+            errors.append(f"{label} must use workflow.job format")
+        elif key not in configured_workflow_jobs:
+            errors.append(f"{label} must point at a known workflow job")
+        if not isinstance(raw_dependencies, list) or not raw_dependencies:
+            errors.append(f"{label} must be a non-empty list")
+            continue
+        dependencies = [str(dependency).strip() for dependency in raw_dependencies]
+        if any(not dependency for dependency in dependencies):
+            errors.append(f"{label} must only contain non-empty strings")
+        if len(dependencies) != len(set(dependencies)):
+            errors.append(f"{label} must not contain duplicate jobs")
+
+        known_jobs = jobs_by_workflow.get(workflow)
+        if known_jobs is None:
+            continue
+        unknown_dependencies = sorted({dependency for dependency in dependencies if dependency} - known_jobs)
+        for dependency in unknown_dependencies:
+            errors.append(f"{label} references unknown job: {dependency}")
+
+
+def check_sparse_checkout_files(field_name: str, sparse_checkout_files: object, errors: list[str]) -> None:
+    if not isinstance(sparse_checkout_files, list) or not sparse_checkout_files:
+        errors.append(f"project.{field_name} must be a non-empty list")
+        return
+
+    paths = [str(path).strip() for path in sparse_checkout_files]
+    if any(not path for path in paths):
+        errors.append(f"project.{field_name} must only contain non-empty strings")
+    if len(paths) != len(set(paths)):
+        errors.append(f"project.{field_name} must not contain duplicate paths")
+    for raw_path in paths:
+        path = check_relative_path(raw_path, f"project.{field_name} entry", errors)
+        if path:
+            read(ROOT / path, errors)
+
+
 def check_project_release_metadata(product: dict, errors: list[str]) -> None:
     project = product["project"]
     default_branch = str(project.get("github_default_branch", "")).strip()
-    release_actions = project.get("release_workflow_actions", {})
-    if not isinstance(release_actions, dict) or not release_actions:
-        errors.append("project.release_workflow_actions must be a non-empty object")
+    for field in ("compile_firmware_artifact_prefix", "compile_firmware_output_dir", "compile_firmware_version_prefix"):
+        if not str(project.get(field, "")).strip():
+            errors.append(f"project.{field} is required")
+    pull_request_template = check_relative_path(
+        project.get("github_pull_request_template_path"),
+        "project.github_pull_request_template_path",
+        errors,
+    )
+    if pull_request_template:
+        read(ROOT / pull_request_template, errors)
+    device_testing_options = project.get("github_pull_request_device_testing_options", [])
+    if not isinstance(device_testing_options, list) or not device_testing_options:
+        errors.append("project.github_pull_request_device_testing_options must be a non-empty list")
     else:
-        for name, action in release_actions.items():
-            if not isinstance(name, str) or not name.strip():
-                errors.append("project.release_workflow_actions keys must be non-empty strings")
-            if not isinstance(action, str) or not action.strip():
-                errors.append(f"project.release_workflow_actions.{name} must be a non-empty string")
+        options = [str(option).strip() for option in device_testing_options]
+        if any(not option for option in options):
+            errors.append("project.github_pull_request_device_testing_options must only contain non-empty strings")
+        if len(options) != len(set(options)):
+            errors.append("project.github_pull_request_device_testing_options must not contain duplicate options")
+    release_actions = project.get("release_workflow_actions", {})
+    check_release_workflow_actions(release_actions, errors)
     workflow_permissions = project.get("github_workflow_permissions", {})
     expected_workflows = {"compile", "docs", "release"}
     github_cli_env = project.get("github_cli_env", {})
@@ -128,22 +282,9 @@ def check_project_release_metadata(product: dict, errors: list[str]) -> None:
                 errors.append(f"project.github_workflow_events.{name or '<missing>'} must only contain non-empty strings")
             if len(events) != len(set(events)):
                 errors.append(f"project.github_workflow_events.{name or '<missing>'} must not contain duplicate events")
+    configured_workflow_events = workflow_event_index(workflow_events)
     workflow_event_types = project.get("github_workflow_event_types", {})
-    if not isinstance(workflow_event_types, dict) or not workflow_event_types:
-        errors.append("project.github_workflow_event_types must be a non-empty object")
-    else:
-        for raw_key, raw_types in workflow_event_types.items():
-            key = str(raw_key).strip()
-            if "." not in key:
-                errors.append(f"project.github_workflow_event_types.{key or '<missing>'} must use workflow.event format")
-            if not isinstance(raw_types, list) or not raw_types:
-                errors.append(f"project.github_workflow_event_types.{key or '<missing>'} must be a non-empty list")
-                continue
-            event_types = [str(event_type).strip() for event_type in raw_types]
-            if any(not event_type for event_type in event_types):
-                errors.append(f"project.github_workflow_event_types.{key or '<missing>'} must only contain non-empty strings")
-            if len(event_types) != len(set(event_types)):
-                errors.append(f"project.github_workflow_event_types.{key or '<missing>'} must not contain duplicate event types")
+    check_workflow_event_types(workflow_event_types, configured_workflow_events, errors)
     workflow_jobs = project.get("github_workflow_jobs", {})
     if not isinstance(workflow_jobs, dict) or not workflow_jobs:
         errors.append("project.github_workflow_jobs must be a non-empty object")
@@ -169,36 +310,37 @@ def check_project_release_metadata(product: dict, errors: list[str]) -> None:
                     errors.append(f"project.github_workflow_jobs.{workflow or '<missing>'} job ids must be non-empty strings")
                 if not job_name:
                     errors.append(f"project.github_workflow_jobs.{workflow or '<missing>'}.{job_id or '<missing>'} must be a non-empty string")
+    configured_workflow_jobs, jobs_by_workflow = workflow_job_index(workflow_jobs)
     workflow_job_dependencies = project.get("github_workflow_job_dependencies", {})
-    if not isinstance(workflow_job_dependencies, dict) or not workflow_job_dependencies:
-        errors.append("project.github_workflow_job_dependencies must be a non-empty object")
+    check_workflow_job_dependencies(workflow_job_dependencies, configured_workflow_jobs, jobs_by_workflow, errors)
+    workflow_job_conditions = project.get("github_workflow_job_conditions", {})
+    if not isinstance(workflow_job_conditions, dict) or not workflow_job_conditions:
+        errors.append("project.github_workflow_job_conditions must be a non-empty object")
     else:
-        for raw_key, raw_dependencies in workflow_job_dependencies.items():
+        configured_condition_jobs = {str(key).strip() for key in workflow_job_conditions}
+        missing_condition_jobs = sorted(configured_workflow_jobs - configured_condition_jobs)
+        extra_condition_jobs = sorted(configured_condition_jobs - configured_workflow_jobs)
+        if missing_condition_jobs:
+            errors.append(
+                "project.github_workflow_job_conditions is missing jobs: " + ", ".join(missing_condition_jobs)
+            )
+        if extra_condition_jobs:
+            errors.append(
+                "project.github_workflow_job_conditions contains unknown jobs: " + ", ".join(extra_condition_jobs)
+            )
+        for raw_key, raw_condition in workflow_job_conditions.items():
             key = str(raw_key).strip()
             workflow, _, job_id = key.partition(".")
             if not workflow or not job_id:
-                errors.append(f"project.github_workflow_job_dependencies.{key or '<missing>'} must use workflow.job format")
-            if not isinstance(raw_dependencies, list) or not raw_dependencies:
-                errors.append(f"project.github_workflow_job_dependencies.{key or '<missing>'} must be a non-empty list")
-                continue
-            dependencies = [str(dependency).strip() for dependency in raw_dependencies]
-            if any(not dependency for dependency in dependencies):
-                errors.append(f"project.github_workflow_job_dependencies.{key or '<missing>'} must only contain non-empty strings")
-            if len(dependencies) != len(set(dependencies)):
-                errors.append(f"project.github_workflow_job_dependencies.{key or '<missing>'} must not contain duplicate jobs")
-    sparse_checkout_files = project.get("github_sparse_checkout_files", [])
-    if not isinstance(sparse_checkout_files, list) or not sparse_checkout_files:
-        errors.append("project.github_sparse_checkout_files must be a non-empty list")
-    else:
-        paths = [str(path).strip() for path in sparse_checkout_files]
-        if any(not path for path in paths):
-            errors.append("project.github_sparse_checkout_files must only contain non-empty strings")
-        if len(paths) != len(set(paths)):
-            errors.append("project.github_sparse_checkout_files must not contain duplicate paths")
-        for raw_path in paths:
-            path = check_relative_path(raw_path, "project.github_sparse_checkout_files entry", errors)
-            if path:
-                read(ROOT / path, errors)
+                errors.append(f"project.github_workflow_job_conditions.{key or '<missing>'} must use workflow.job format")
+            if raw_condition is not None and (not isinstance(raw_condition, str) or not raw_condition.strip()):
+                errors.append(f"project.github_workflow_job_conditions.{key or '<missing>'} must be a non-empty string or null")
+    check_sparse_checkout_files("github_sparse_checkout_files", project.get("github_sparse_checkout_files", []), errors)
+    check_sparse_checkout_files(
+        "github_metadata_sparse_checkout_files",
+        project.get("github_metadata_sparse_checkout_files", []),
+        errors,
+    )
     if not isinstance(project.get("github_sparse_checkout_cone_mode"), bool):
         errors.append("project.github_sparse_checkout_cone_mode must be true or false")
     release_notes_fetch_depth = project.get("github_release_notes_fetch_depth")

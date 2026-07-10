@@ -1,7 +1,7 @@
 # =============================================================================
 # BACKLIGHT SCHEDULE & DAY/NIGHT BRIGHTNESS
 # =============================================================================
-# Scheduled true display-off, temporary touch wake during off-hours, automatic
+# Scheduled backlight-off, temporary touch wake during off-hours, automatic
 # day/night brightness based on sunrise/sunset calculation, and manual
 # long-press sleep.
 # =============================================================================
@@ -218,7 +218,7 @@ text_sensor:
 # =============================================================================
 
 script:
-  # Preserve an already-asleep schedule state across normal reboots.
+  # Preserve an already-asleep schedule state across normal reboots while keeping LVGL active.
   - id: screen_schedule_boot_guard
     mode: restart
     then:
@@ -241,7 +241,9 @@ script:
             - globals.set:
                 id: manual_wake_ms
                 value: '0'
+            - lambda: 'global_preferences->sync();'
             - script.execute: backlight_schedule_display_off
+            - script.execute: screen_schedule_boot_recover
           else:
             - if:
                 condition:
@@ -264,6 +266,19 @@ script:
                   - globals.set:
                       id: screen_schedule_asleep
                       value: 'false'
+
+  # Re-check the schedule soon after boot. OTA and power-on boots can start
+  # before SNTP has a valid clock, so these checks apply the schedule as soon
+  # as reliable local time is available.
+  - id: screen_schedule_boot_recover
+    mode: restart
+    then:
+      - delay: 5s
+      - script.execute: screen_schedule_check
+      - delay: 10s
+      - script.execute: screen_schedule_check
+      - delay: 20s
+      - script.execute: screen_schedule_check
 
   # Restore the right visible page after waking from the black screen-off page.
   - id: screen_schedule_restore_page
@@ -365,7 +380,13 @@ script:
 
           if (in_window) {
             id(manual_wake_ms) = 0;
-            if (id(screen_schedule_asleep) && !id(backlight_manual_off)) {
+            bool should_wake = !id(backlight_manual_off) &&
+                               (id(screen_schedule_asleep) ||
+                                id(backlight_paused) ||
+                                id(screensaver_display_off_active) ||
+                                lv_scr_act() == id(screen_off_page)->obj ||
+                                !id(backlight).current_values.is_on());
+            if (should_wake) {
               id(screen_schedule_wake).execute();
             }
             return;
@@ -550,6 +571,7 @@ script:
               auto now = id(sntp_time).now();
               if (id(backlight_paused) || id(screen_schedule_asleep) ||
                   id(screensaver_display_off_active) ||
+                  lv_scr_act() == id(screen_off_page)->obj ||
                   !id(backlight).current_values.is_on()) {
                 return true;
               }
@@ -571,6 +593,7 @@ script:
                 auto now = id(sntp_time).now();
                 bool was_off = id(backlight_paused) || id(screen_schedule_asleep) ||
                                id(screensaver_display_off_active) ||
+                               lv_scr_act() == id(screen_off_page)->obj ||
                                !id(backlight).current_values.is_on();
                 if (was_off) {
                   id(touch_started_while_off) = true;
@@ -661,15 +684,14 @@ script:
           then:
             - script.execute: backlight_recalc_sunrise_sunset
 
-# Keep the physical backlight off while schedule sleep or boot-time unknown-time
-# guard is active, even if another route turns the light entity on.
+# Keep the physical backlight off while schedule sleep or manual-off is active,
+# even if another route turns the light entity on.
 interval:
   - interval: 500ms
     then:
       - if:
           condition:
             lambda: |-
-              return id(screen_schedule_asleep) ||
-                     id(backlight_manual_off);
+              return id(screen_schedule_asleep) || id(backlight_manual_off);
           then:
             - script.execute: backlight_force_display_off
