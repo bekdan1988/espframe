@@ -24,9 +24,6 @@ esp32:
     sdkconfig_options:
       CONFIG_HTTPD_MAX_URI_LEN: "128"
       CONFIG_ESP_TASK_WDT_TIMEOUT_S: "30"
-      CONFIG_ESP_TLS_USING_GLOBAL_CA_STORE: y
-      CONFIG_MBEDTLS_CERTIFICATE_BUNDLE: y
-      CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL: y
     advanced:
       enable_idf_experimental_features: yes
 
