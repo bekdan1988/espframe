@@ -25,6 +25,7 @@ esp32:
       CONFIG_HTTPD_MAX_URI_LEN: "128"
       CONFIG_ESP_TASK_WDT_TIMEOUT_S: "30"
 
+      # TLS 1.3 Alapbeállítások és képességek
       CONFIG_MBEDTLS_SSL_PROTO_TLS1_3: y
       CONFIG_MBEDTLS_HKDF_C: y
       CONFIG_MBEDTLS_ECDH_C: y
@@ -33,12 +34,21 @@ esp32:
       CONFIG_MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA_ENABLED: y
       CONFIG_MBEDTLS_GCM_C: y
       CONFIG_MBEDTLS_ECP_DP_SECP256R1_ENABLED: y
-      CONFIG_MBEDTLS_TLS1_3_AES_128_GCM_SHA256: y
       CONFIG_MBEDTLS_SHA256_C: y
+      
+      # TLS 1.3 Ciphersuite és kulcscsere módok (A fordításhoz és futáshoz kötelező)
+      CONFIG_MBEDTLS_TLS1_3_AES_128_GCM_SHA256: y
+      CONFIG_MBEDTLS_SSL_TLS1_3_KEXM_EPHEMERAL: y
+      CONFIG_MBEDTLS_SSL_TLS1_3_KEXM_PSK_EPHEMERAL: y
+
+      # Memória-optimalizálás (RAM megtakarítás a kézfogás alatt)
       CONFIG_MBEDTLS_SSL_VARIABLE_BUFFER_LENGTH: y
-      CONFIG_MBEDTLS_AES_ALT: y
-      CONFIG_MBEDTLS_SHA256_ALT: y
-      CONFIG_MBEDTLS_ECP_ALT: y
+
+      # Az ESP-IDF v6+ szerinti natív hardveres gyorsítás engedélyezése az ESP32-P4-en
+      # (Nem kellenek a kézzel megadott hibás szoftveres _ALT kapcsolók)
+      CONFIG_MBEDTLS_HARDWARE_AES: y
+      CONFIG_MBEDTLS_HARDWARE_SHA: y
+      CONFIG_MBEDTLS_HARDWARE_ECC: y
     advanced:
       enable_idf_experimental_features: yes
 
