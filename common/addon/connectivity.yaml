@@ -21,8 +21,8 @@ http_request:
   id: http_req
   timeout: 20s
   verify_ssl: ${immich_verify_ssl}
-  buffer_size_rx: 32768
-  buffer_size_tx: 4096
+  buffer_size_rx: 4096
+  buffer_size_tx: 1024
 
 # -----------------------------------------------------------------------------
 # Captive portal and WiFi (connect / disconnect → page navigation)
