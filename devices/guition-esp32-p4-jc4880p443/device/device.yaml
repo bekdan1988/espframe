@@ -170,7 +170,7 @@ i2c:
 # -----------------------------------------------------------------------------
 display:
   - platform: mipi_dsi
-    id: my_display
+    id: tft_display
     model: JC4880P443 
     dimensions:
       width: 480
