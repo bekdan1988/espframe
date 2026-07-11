@@ -21,6 +21,10 @@ esp32:
   engineering_sample: true
   framework:
     type: esp-idf
+    sdkconfig_options:
+      CONFIG_ESP_TLS_USING_GLOBAL_CA_STORE: y
+      CONFIG_MBEDTLS_CERTIFICATE_BUNDLE: y
+      CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL: y
     advanced:
       enable_idf_experimental_features: yes
 
