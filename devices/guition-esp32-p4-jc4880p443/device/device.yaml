@@ -21,8 +21,6 @@ esp32:
   engineering_sample: true
   framework:
     type: esp-idf
-    sdkconfig_options:
-      CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY: y
     advanced:
       enable_idf_experimental_features: yes
 
