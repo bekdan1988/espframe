@@ -16,16 +16,13 @@ substitutions:
   log_level: "INFO"
 
 esp32:
-  variant: ESP32P4
+  variant: esp32p4
   flash_size: 16MB
   engineering_sample: true
   framework:
     type: esp-idf
-    sdkconfig_options:
-      CONFIG_HTTPD_MAX_URI_LEN: "128"
-      CONFIG_ESP_TASK_WDT_TIMEOUT_S: "30"
     advanced:
-      enable_idf_experimental_features: true
+      enable_idf_experimental_features: yes
 
 esphome:
   name: ${name}
@@ -41,7 +38,8 @@ esphome:
 # ESP32-C6 coprocessor (WiFi and Bluetooth via SDIO)
 # -----------------------------------------------------------------------------
 esp32_hosted:
-  variant: esp32c6
+  active_high: true
+  variant: ESP32C6
   reset_pin: GPIO54
   cmd_pin: GPIO19
   clk_pin: GPIO18
@@ -49,13 +47,11 @@ esp32_hosted:
   d1_pin: GPIO15
   d2_pin: GPIO16
   d3_pin: GPIO17
-  active_high: true
 
 # -----------------------------------------------------------------------------
 # PSRAM (hex mode, 200 MHz)
 # -----------------------------------------------------------------------------
 psram:
-  mode: hex
   speed: 200MHz
 
 # -----------------------------------------------------------------------------
@@ -152,44 +148,30 @@ espframe:
 # -----------------------------------------------------------------------------
 esp_ldo:
   - channel: 3
-    id: dsi_phy_enable
     voltage: 2.5V
-    adjustable: true
 
 output:
   - platform: ledc
     id: backlight_output
     pin: GPIO23
+    frequency: 100Hz
+    inverted: false
+    min_power: 0.0
+    max_power: 0.8
 
 i2c:
-  - id: i2c_bus_a
-    sda: GPIO7
-    scl: GPIO8
-    scan: true
-    frequency: 400kHz
-    sda_pullup_enabled: false
-    scl_pullup_enabled: false
+  sda: GPIO7
+  scl: GPIO8
+  scan: false
+  frequency: 400kHz
 
 # -----------------------------------------------------------------------------
 # MIPI DSI display (JC4880P443, 800×1280, rotation 90)
 # -----------------------------------------------------------------------------
 display:
   - platform: mipi_dsi
-    model: JC4880P443
-    id: tft_display
-    reset_pin: GPIO27
-    auto_clear_enabled: false
-    update_interval: never
-    color_order: RGB
-    # Match Guition's JD9365 reference driver for the JC4880P443_I_W_Y panel.
-    pclk_frequency: 60MHz
-    lane_bit_rate: 1500Mbps
-    hsync_pulse_width: 20
-    hsync_back_porch: 20
-    hsync_front_porch: 40
-    vsync_pulse_width: 4
-    vsync_back_porch: 8
-    vsync_front_porch: 20
+    id: my_display
+    model: JC4880P443 
     dimensions:
       width: 480
       height: 800
@@ -201,8 +183,6 @@ touchscreen:
   - platform: gt911
     id: tft_touch
     display: tft_display
-    reset_pin: GPIO22
-    interrupt_pin: GPIO21
     transform:
       swap_xy: true
       mirror_x: false
