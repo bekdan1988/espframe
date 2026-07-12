@@ -200,6 +200,8 @@ touchscreen:
   - platform: gt911
     id: tft_touch
     display: tft_display
+    reset_pin: GPIO22
+    interrupt_pin: GPIO21
     transform:
       swap_xy: true
       mirror_x: false
