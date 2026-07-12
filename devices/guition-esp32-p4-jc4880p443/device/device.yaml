@@ -180,7 +180,7 @@ display:
     reset_pin: GPIO27
     auto_clear_enabled: false
     update_interval: never
-    color_order: RGB
+    # color_order: RGB
     # Match Guition's JD9365 reference driver for the JC4880P443_I_W_Y panel.
     # hsync_pulse_width: 20
     # hsync_back_porch: 20
