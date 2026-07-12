@@ -23,7 +23,6 @@ esp32:
     type: esp-idf
     advanced:
       enable_idf_experimental_features: yes
-      execute_from_psram: true
     sdkconfig_options:
       CONFIG_HTTPD_MAX_URI_LEN: "128"
       CONFIG_ESP_TASK_WDT_TIMEOUT_S: "30"
