@@ -181,7 +181,7 @@ display:
     auto_clear_enabled: false
     update_interval: never
     color_order: RGB
-    #pclk_frequency: 60MHz
+    pclk_frequency: 60MHz
     #lane_bit_rate: 1500Mbps
     hsync_pulse_width: 20
     hsync_back_porch: 20
