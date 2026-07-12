@@ -21,11 +21,16 @@ esp32:
   engineering_sample: true
   framework:
     type: esp-idf
+    advanced:
+      enable_idf_experimental_features: yes
+      execute_from_psram: true
     sdkconfig_options:
       CONFIG_HTTPD_MAX_URI_LEN: "128"
       CONFIG_ESP_TASK_WDT_TIMEOUT_S: "30"
-    advanced:
-      enable_idf_experimental_features: yes
+      CONFIG_ESP_MAIN_TASK_STACK_SIZE: "8192"
+      CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: "y"
+      CONFIG_ESP_HOSTED_USE_MEMPOOL: "n"
+      CONFIG_ESP_HOSTED_DFLT_TASK_FROM_SPIRAM: "y"
 
 esphome:
   name: ${name}
@@ -41,7 +46,8 @@ esphome:
 # ESP32-C6 coprocessor (WiFi and Bluetooth via SDIO)
 # -----------------------------------------------------------------------------
 esp32_hosted:
-  variant: esp32c6
+  active_high: true
+  variant: ESP32C6
   reset_pin: GPIO54
   cmd_pin: GPIO19
   clk_pin: GPIO18
@@ -49,13 +55,12 @@ esp32_hosted:
   d1_pin: GPIO15
   d2_pin: GPIO16
   d3_pin: GPIO17
-  active_high: true
+  sdio_frequency: 20MHz
 
 # -----------------------------------------------------------------------------
 # PSRAM (hex mode, 200 MHz)
 # -----------------------------------------------------------------------------
 psram:
-  mode: hex
   speed: 200MHz
 
 # -----------------------------------------------------------------------------
@@ -154,21 +159,22 @@ esp_ldo:
   - channel: 3
     id: dsi_phy_enable
     voltage: 2.5V
-    adjustable: true
 
 output:
   - platform: ledc
     id: backlight_output
     pin: GPIO23
+    frequency: 100Hz
+    inverted: false
+    min_power: 0.0
+    max_power: 0.8
 
 i2c:
   - id: i2c_bus_a
     sda: GPIO7
     scl: GPIO8
-    scan: true
+    scan: false
     frequency: 400kHz
-    sda_pullup_enabled: false
-    scl_pullup_enabled: false
 
 # -----------------------------------------------------------------------------
 # MIPI DSI display (JC4880P443, 480×800, rotation 90)
@@ -180,7 +186,6 @@ display:
     reset_pin: GPIO27
     auto_clear_enabled: false
     update_interval: never
-    color_order: RGB
     dimensions:
       width: 480
       height: 800
