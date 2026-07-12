@@ -180,6 +180,7 @@ display:
     reset_pin: GPIO27
     auto_clear_enabled: false
     update_interval: never
+    color_order: RGB
     dimensions:
       width: 480
       height: 800
