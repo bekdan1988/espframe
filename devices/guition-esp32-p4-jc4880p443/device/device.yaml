@@ -182,7 +182,7 @@ display:
     update_interval: never
     color_order: RGB
     pclk_frequency: 40MHz
-    lane_bit_rate: 1500Mbps
+    lane_bit_rate: 200Mbps
     hsync_pulse_width: 20
     hsync_back_porch: 20
     hsync_front_porch: 40
