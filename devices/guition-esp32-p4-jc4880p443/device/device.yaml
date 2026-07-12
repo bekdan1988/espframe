@@ -11,7 +11,7 @@
 # Build and log
 # -----------------------------------------------------------------------------
 substitutions:
-  espframe_component_url: "https://github.com/jtenniswood/espframe"
+  espframe_component_url: "https://github.com/bekdan1988/espframe"
   espframe_component_ref: "main"
   log_level: "INFO"
 
