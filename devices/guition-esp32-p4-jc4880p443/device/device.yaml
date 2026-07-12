@@ -183,7 +183,6 @@ display:
   - platform: mipi_dsi
     model: JC4880P443
     id: tft_display
-    reset_pin: GPIO27
     auto_clear_enabled: false
     update_interval: never
     dimensions:
@@ -197,8 +196,6 @@ touchscreen:
   - platform: gt911
     id: tft_touch
     display: tft_display
-    reset_pin: GPIO22
-    interrupt_pin: GPIO21
     transform:
       swap_xy: true
       mirror_x: false
