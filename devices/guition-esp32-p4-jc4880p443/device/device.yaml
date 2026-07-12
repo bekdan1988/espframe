@@ -175,8 +175,20 @@ i2c:
 # -----------------------------------------------------------------------------
 display:
   - platform: mipi_dsi
+    model: JC4880P443
     id: tft_display
-    model: JC4880P443 
+    reset_pin: GPIO27
+    auto_clear_enabled: false
+    update_interval: never
+    color_order: RGB
+    pclk_frequency: 60MHz
+    lane_bit_rate: 1500Mbps
+    hsync_pulse_width: 20
+    hsync_back_porch: 20
+    hsync_front_porch: 40
+    vsync_pulse_width: 4
+    vsync_back_porch: 8
+    vsync_front_porch: 20
     dimensions:
       width: 480
       height: 800
