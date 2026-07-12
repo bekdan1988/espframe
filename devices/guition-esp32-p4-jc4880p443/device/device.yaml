@@ -160,16 +160,15 @@ output:
   - platform: ledc
     id: backlight_output
     pin: GPIO23
-    #frequency: 100Hz
-    #inverted: false
-    #min_power: 0.0
-    #max_power: 0.8
 
 i2c:
-  sda: GPIO7
-  scl: GPIO8
-  scan: false
-  frequency: 400kHz
+  - id: i2c_bus_a
+    sda: GPIO7
+    scl: GPIO8
+    scan: true
+    frequency: 400kHz
+    sda_pullup_enabled: false
+    scl_pullup_enabled: false
 
 # -----------------------------------------------------------------------------
 # MIPI DSI display (JC4880P443, 480×800, rotation 90)
