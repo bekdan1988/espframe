@@ -101,10 +101,8 @@ web_server:
   # Keep the control panel on the frame so setup and settings still work if
   # GitHub Pages or the wider internet is unavailable.
   js_url: ""
-  css_include: "https://raw.githubusercontent.com/bekdan1988/espframe/refs/heads/main/docs/public/webserver/style.css"
-  js_include: "https://raw.githubusercontent.com/bekdan1988/espframe/refs/heads/main/docs/public/webserver/app.js"
-  #css_include: "../../../docs/public/webserver/style.css"
-  #js_include: "../../../docs/public/webserver/app.js"
+  css_include: "../../../docs/public/webserver/style.css"
+  js_include: "../../../docs/public/webserver/app.js"
   sorting_groups:
     - id: sg_connection
       name: "Connection"
