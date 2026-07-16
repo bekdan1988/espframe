@@ -44,6 +44,7 @@ remote_image:
   - id: my_remote_image
     url: "https://example.com/image.jpg"
     format: JPEG
+    type: RGB565
     http_request_id: http_request_id
 ```
 
