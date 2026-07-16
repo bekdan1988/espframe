@@ -6,7 +6,7 @@ substitutions:
   portrait_display_width: "480"
   portrait_display_height: "800"
   portrait_metadata_width: "390"
-  portrait_half_width: "320"
+  portrait_half_width: "400"
   screen_rotation: "0"
   screen_rotation_0: "90"
   screen_rotation_90: "180"
