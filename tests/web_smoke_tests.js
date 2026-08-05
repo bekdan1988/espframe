@@ -116,7 +116,7 @@ const validBackupFixture = {
   firmware_updates: {
     auto_update: true,
     update_frequency: "Weekly",
-    manifest_url: "https://firmware.example.com/manifest.json",
+    wifi_auto_update: true,
   },
   clock: {
     show: true,
@@ -182,6 +182,15 @@ const scenarios = [
   { name: "wizard-connection-save", configured: false, width: 1280, height: 900 },
   { name: "settings", configured: true, width: 1280, height: 900 },
   { name: "settings-mobile", configured: true, width: 390, height: 900 },
+  { name: "firmware-main-install", configured: true, width: 1280, height: 900 },
+  { name: "firmware-c6-install", configured: true, width: 1280, height: 900 },
+  { name: "firmware-rollback", configured: true, width: 1280, height: 900 },
+  { name: "firmware-rollback-failure", configured: true, width: 1280, height: 900, firmwareUploadFails: true },
+  { name: "firmware-index-unavailable", configured: true, width: 1280, height: 900, firmwareIndexUnavailable: true },
+  { name: "firmware-newer-prerelease", configured: true, width: 1280, height: 900, installedFirmwareVersion: "v1.2.0-beta.1" },
+  ...(product.devices[1]
+    ? [{ name: "firmware-second-device-index", configured: true, width: 1280, height: 900, firmwareDeviceSlug: product.devices[1].slug }]
+    : []),
   { name: "photo-source-reorder", configured: true, width: 1280, height: 900 },
   { name: "screen-rotation-developer", configured: true, width: 1280, height: 900, query: "dev=experimental" },
   { name: "screen-tone-schedule", configured: true, width: 1280, height: 900 },
@@ -196,16 +205,21 @@ const scenarios = [
 ];
 
 function browserScriptForScenario(scenario) {
+  const firmwareDeviceSlug = scenario.firmwareDeviceSlug || product.devices[0].slug;
+  const installedFirmwareVersion = scenario.installedFirmwareVersion || "v1.0.0";
   return `
     window.__smoke = {
       posts: [],
       postRecords: [],
       errors: [],
+      fetchedUrls: [],
       downloads: 0,
       exportPayloads: [],
       inputClicks: 0,
       importFixture: ${JSON.stringify(scenario.importFixture || null)},
-      failedPostEndpoint: ${JSON.stringify(scenario.failedPostEndpoint || "")}
+      failedPostEndpoint: ${JSON.stringify(scenario.failedPostEndpoint || "")},
+      firmwareIndexUnavailable: ${JSON.stringify(!!scenario.firmwareIndexUnavailable)},
+      firmwareUploadFails: ${JSON.stringify(!!scenario.firmwareUploadFails)}
     };
     window.addEventListener("error", function (event) {
       window.__smoke.errors.push(event.message || "browser error");
@@ -254,6 +268,11 @@ function browserScriptForScenario(scenario) {
           this.dispatch("log", { msg: "Smoke log line", lvl: 3 });
           this.dispatch("state", { id: "text_sensor/Screen: Sunrise", value: "06:30" });
           this.dispatch("state", { id: "text_sensor/Screen: Sunset", value: "21:45" });
+          this.dispatch("state", { id: "text_sensor/Firmware: Version", value: ${JSON.stringify(installedFirmwareVersion)} });
+          this.dispatch("state", { id: "text_sensor/Firmware: Device", value: ${JSON.stringify(firmwareDeviceSlug)} });
+          this.dispatch("state", { id: "text_sensor/ESP32-C6: Current Firmware", value: "2.0.0" });
+          this.dispatch("state", { id: "text_sensor/ESP32-C6: Available Firmware", value: "2.0.1" });
+          this.dispatch("state", { id: "text_sensor/ESP32-C6: Update Available", value: "Update available" });
         }, 25);
       }
       addEventListener(type, listener) {
@@ -273,7 +292,8 @@ function browserScriptForScenario(scenario) {
     const endpointValues = {
       "Connection: Server URL": configured ? "https://photos.example.com" : "",
       "Connection: API Key": configured ? "fixture-api-key" : "",
-      "Firmware: Version": "v1.0.0",
+      "Firmware: Version": ${JSON.stringify(installedFirmwareVersion)},
+      "Firmware: Device": ${JSON.stringify(firmwareDeviceSlug)},
       "Photos: Source": "Album",
       "Photos: Album IDs": ${JSON.stringify(smokeAlbumIds.join(","))},
       "Photos: Album Labels": ${JSON.stringify(smokeAlbumLabels.join(","))},
@@ -304,7 +324,10 @@ function browserScriptForScenario(scenario) {
       "Clock: NTP Server 3": "2.pool.ntp.org",
       "Firmware: Auto Update": true,
       "Firmware: Update Frequency": "Daily",
-      "Firmware: Manifest URL": "",
+      "WiFi Firmware: Auto Update": true,
+      "ESP32-C6: Current Firmware": "2.0.0",
+      "ESP32-C6: Available Firmware": "2.0.1",
+      "ESP32-C6: Update Available": "Update available",
       "Screen: Daytime Brightness": 100,
       "Screen: Nighttime Brightness": 75,
       "Screen: Schedule Enabled": false,
@@ -363,7 +386,38 @@ function browserScriptForScenario(scenario) {
     window.fetch = function (url, options) {
       const method = options && options.method ? options.method : "GET";
       const decoded = decodeURIComponent(String(url));
+      window.__smoke.fetchedUrls.push(decoded);
       const body = options && options.body != null ? String(options.body) : "";
+      if (decoded.indexOf("versions.json") !== -1) {
+        if (window.__smoke.firmwareIndexUnavailable) {
+          return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({
+            device: ${JSON.stringify(firmwareDeviceSlug)},
+            versions: [
+              { version: "not-a-version", ota: { path: "bad.ota.bin", md5: "bad" } },
+              { version: "v1.0.1", release_url: "https://github.com/jtenniswood/espframe/releases/tag/v1.0.1", ota: { path: ${JSON.stringify(firmwareDeviceSlug + ".ota.bin")}, md5: "11111111111111111111111111111111" } },
+              { version: "v1.0.0", release_url: "https://github.com/jtenniswood/espframe/releases/tag/v1.0.0", ota: { path: "versions/v1.0.0/${firmwareDeviceSlug}.ota.bin", md5: "22222222222222222222222222222222" } },
+              { version: "v0.9.0", release_url: "https://github.com/jtenniswood/espframe/releases/tag/v0.9.0", ota: { path: "versions/v0.9.0/${firmwareDeviceSlug}.ota.bin", md5: "33333333333333333333333333333333" } }
+            ]
+          })
+        });
+      }
+      if (decoded.indexOf(".ota.bin") !== -1 && method === "GET") {
+        return Promise.resolve({ ok: true, status: 200, blob: () => Promise.resolve(new Blob(["firmware"])) });
+      }
+      if (decoded === "/update" && method === "POST") {
+        window.__smoke.posts.push(decoded);
+        window.__smoke.postRecords.push({ url: decoded, body });
+        return Promise.resolve({
+          ok: !window.__smoke.firmwareUploadFails,
+          status: window.__smoke.firmwareUploadFails ? 500 : 200,
+          text: () => Promise.resolve(window.__smoke.firmwareUploadFails ? "Update failed" : "Update successful")
+        });
+      }
       if (decoded === "/espframe/api/v1/configuration") {
         if (method === "GET") {
           return Promise.resolve({
@@ -422,7 +476,7 @@ function browserScriptForScenario(scenario) {
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: () => Promise.resolve({ value: "v1.0.1", state: "UPDATE AVAILABLE", current_version: "v1.0.0", latest_version: "v1.0.1" })
+          json: () => Promise.resolve({ value: "v1.0.1", state: "UPDATE AVAILABLE", current_version: ${JSON.stringify(installedFirmwareVersion)}, latest_version: "v1.0.1" })
         });
       }
       const endpointName = endpointNameForUrl(decoded);
@@ -438,6 +492,10 @@ function browserScriptForScenario(scenario) {
 }
 
 function smokeAssertionsForScenario(scenario) {
+  const expectedFirmwareVersionsPath = scenario.firmwareDeviceSlug
+    ? String(product.devices.find((device) => device.slug === scenario.firmwareDeviceSlug).public_manifest)
+        .replace(/[^/]+$/, "versions.json")
+    : "";
   return `
     (async function () {
       function waitFor(check, timeoutMs, label) {
@@ -618,6 +676,92 @@ function smokeAssertionsForScenario(scenario) {
           header.click();
         }
         return card;
+      }
+      function requireSettingsSections() {
+        clickTab("Device");
+        const expected = [
+          ["Display", ["Screen Brightness", "Screen Tone", "Rotation"]],
+          ["Sleep & Schedule", ["Night Schedule"]],
+          ["Preferences", ["Clock"]],
+          ["System", ["Backup", "Firmware", "Device Reboot"]]
+        ];
+        const sections = Array.from(document.querySelectorAll("#sp-settings .settings-section"));
+        const sectionNames = sections.map((section) => {
+          const heading = section.querySelector(":scope > .settings-section-title");
+          if (!heading || heading.tagName !== "H2" || section.getAttribute("aria-labelledby") !== heading.id) {
+            throw new Error("Settings section is missing its accessible heading");
+          }
+          return heading.textContent.trim();
+        });
+        if (sectionNames.join("|") !== expected.map((entry) => entry[0]).join("|")) {
+          throw new Error("Unexpected settings section order: " + sectionNames.join(", "));
+        }
+        expected.forEach(([name, expectedCards]) => {
+          const section = sections.find((item) => item.querySelector(":scope > .settings-section-title").textContent.trim() === name);
+          const cardNames = Array.from(section.querySelectorAll(":scope > .card > .card-header > h3"))
+            .map((heading) => heading.textContent.trim());
+          if (cardNames.join("|") !== expectedCards.join("|")) {
+            throw new Error(name + " cards are not logically ordered: " + cardNames.join(", "));
+          }
+        });
+      }
+      function disclosureByTitle(title) {
+        const disclosure = Array.from(document.querySelectorAll(".inline-disclosure")).find((item) => {
+          const button = item.querySelector(".inline-disclosure-button");
+          return button && button.textContent.indexOf(title) !== -1;
+        });
+        if (!disclosure) throw new Error("Firmware panel not found: " + title);
+        return disclosure;
+      }
+      function expandDisclosure(title) {
+        const disclosure = disclosureByTitle(title);
+        const button = disclosure.querySelector(".inline-disclosure-button");
+        if (button.getAttribute("aria-expanded") !== "true") button.click();
+        if (button.getAttribute("aria-expanded") !== "true") throw new Error(title + " did not expand");
+        return disclosure;
+      }
+      function toggleInDisclosure(title, label) {
+        const disclosure = expandDisclosure(title);
+        const row = Array.from(disclosure.querySelectorAll(".toggle-row")).find((item) =>
+          Array.from(item.querySelectorAll("span")).some((span) => span.textContent.trim() === label)
+        );
+        const toggle = row && row.querySelector(".toggle");
+        if (!toggle) throw new Error("Toggle not found in " + title + ": " + label);
+        return toggle;
+      }
+      async function requireFirmwarePanels() {
+        const card = expandCard("Firmware");
+        await waitFor(() => card.textContent.indexOf("v1.0.1") !== -1, 4000, "firmware version index");
+        ["Firmware updates", "Auto updates", "WiFi firmware", "Previous firmware"].forEach((title) => {
+          const button = disclosureByTitle(title).querySelector(".inline-disclosure-button");
+          if (button.tagName !== "BUTTON" || button.getAttribute("aria-expanded") !== "false") {
+            throw new Error(title + " disclosure is not an accessible collapsed button");
+          }
+        });
+        if (!card.querySelector(".badge.active")) throw new Error("Outer firmware update badge is not active");
+        const updates = expandDisclosure("Firmware updates");
+        if (updates.textContent.indexOf("Current version") === -1 || updates.textContent.indexOf("v1.0.0") === -1) {
+          throw new Error("Current firmware version is missing");
+        }
+        if (updates.textContent.indexOf("Available version") === -1 || updates.textContent.indexOf("v1.0.1") === -1) {
+          throw new Error("Available firmware version is missing");
+        }
+        if (!disclosureByTitle("Firmware updates").querySelector(".disclosure-badge.active")) {
+          throw new Error("Main firmware update badge is not active");
+        }
+        if (!disclosureByTitle("Auto updates").querySelector(".disclosure-badge.active")) {
+          throw new Error("Automatic update badge is not active");
+        }
+        const wifi = expandDisclosure("WiFi firmware");
+        if (wifi.textContent.indexOf("2.0.0") === -1 || wifi.textContent.indexOf("2.0.1") === -1) {
+          throw new Error("WiFi firmware versions are missing");
+        }
+        if (!wifi.querySelector(".disclosure-badge.active")) throw new Error("WiFi update badge is not active");
+        const previous = expandDisclosure("Previous firmware");
+        const versions = Array.from(previous.querySelectorAll("option")).map((option) => option.value);
+        if (JSON.stringify(versions) !== JSON.stringify(["v0.9.0"])) {
+          throw new Error("Rollback choices are wrong: " + JSON.stringify(versions));
+        }
       }
       function setRangeByLabel(labelText, value) {
         const inputEl = fieldByLabel(labelText).querySelector('input[type="range"]');
@@ -906,20 +1050,23 @@ function smokeAssertionsForScenario(scenario) {
           requireText("Fixed Range");
           requireText("Relative Range");
           requireText("Firmware");
-          requireText("Installed");
           requireText("Auto updates");
           requirePhotoSourceModes();
 
           if (${JSON.stringify(scenario.name)} === "settings" || ${JSON.stringify(scenario.name)} === "settings-mobile") {
+            requireSettingsSections();
+            await requireFirmwarePanels();
+            toggleInDisclosure("Auto updates", "Auto Update").click();
+            toggleInDisclosure("WiFi firmware", "Auto Update").click();
+            await waitFor(() => hasConfigurationPost("Firmware: Auto Update") && hasConfigurationPost("WiFi Firmware: Auto Update"), 4000, "firmware automatic update saves");
+            if (${JSON.stringify(scenario.name)} === "settings-mobile" && document.documentElement.scrollWidth > window.innerWidth + 4) {
+              throw new Error("Grouped settings overflow the mobile viewport");
+            }
             clickButton("Export");
             clickButton("Import");
             if (window.__smoke.downloads !== 1) throw new Error("Export did not trigger a download");
             requireExportShape();
             if (window.__smoke.inputClicks !== 1) throw new Error("Import did not open the file picker");
-            const checkButton = clickButton("Check for Update");
-            await waitFor(() => checkButton.textContent.trim() === "Check for Update", 7000, "firmware check");
-            requireText("Stable");
-            requireText("v1.0.1");
             const logsTab = Array.from(document.querySelectorAll(".sp-tab")).find((tab) => tab.textContent.trim() === "Logs");
             if (!logsTab) throw new Error("Logs tab not found");
             logsTab.click();
@@ -929,6 +1076,93 @@ function smokeAssertionsForScenario(scenario) {
               if (document.documentElement.scrollWidth > window.innerWidth + 4) {
                 throw new Error("Mobile viewport has horizontal overflow");
               }
+            }
+          }
+
+          if (${JSON.stringify(scenario.name)} === "firmware-main-install") {
+            await requireFirmwarePanels();
+            const install = disclosureByTitle("Firmware updates").querySelector(".fw-actions button");
+            install.click();
+            install.click();
+            await waitFor(() => window.__smoke.posts.some((url) => url.indexOf("Firmware: Update/install") !== -1), 8000, "main firmware install");
+            const installPosts = window.__smoke.posts.filter((url) => url.indexOf("Firmware: Update/install") !== -1);
+            if (installPosts.length !== 1 || !install.disabled) throw new Error("Main firmware install was not protected against repeated actions");
+          }
+
+          if (${JSON.stringify(scenario.name)} === "firmware-c6-install") {
+            await requireFirmwarePanels();
+            const install = disclosureByTitle("WiFi firmware").querySelector(".fw-actions button");
+            install.click();
+            install.click();
+            await waitFor(() => window.__smoke.posts.some((url) => url.indexOf("Firmware ESP32-C6: Install Update") !== -1), 4000, "WiFi firmware install");
+            const installPosts = window.__smoke.posts.filter((url) => url.indexOf("Firmware ESP32-C6: Install Update") !== -1);
+            if (installPosts.length !== 1 || !install.disabled) throw new Error("WiFi firmware install was not protected against repeated actions");
+          }
+
+          if (${JSON.stringify(scenario.name)} === "firmware-rollback" || ${JSON.stringify(scenario.name)} === "firmware-rollback-failure") {
+            await requireFirmwarePanels();
+            window.confirm = () => true;
+            disclosureByTitle("Previous firmware").querySelector(".fw-previous-actions button").click();
+            await waitFor(() => window.__smoke.posts.includes("/update"), 4000, "rollback upload");
+            const prepareIndex = window.__smoke.posts.findIndex((url) => url.indexOf("Firmware: Prepare Browser Update/press") !== -1);
+            const uploadIndex = window.__smoke.posts.indexOf("/update");
+            if (prepareIndex === -1 || prepareIndex > uploadIndex) {
+              throw new Error("Rollback upload did not persist reboot recovery state first");
+            }
+            if (${JSON.stringify(scenario.name)} === "firmware-rollback-failure") {
+              await waitFor(() => pageText().indexOf("Device rejected firmware upload (500)") !== -1, 4000, "rollback upload failure");
+              const cancelIndex = window.__smoke.posts.findIndex((url) => url.indexOf("Firmware: Cancel Browser Update/press") !== -1);
+              if (cancelIndex === -1 || cancelIndex < uploadIndex) {
+                throw new Error("Rejected rollback upload did not clear reboot recovery state");
+              }
+            } else {
+              await waitFor(() => pageText().indexOf("Waiting for the display to restart") !== -1, 4000, "rollback reboot wait");
+              if (window.__smoke.posts.some((url) => url.indexOf("Firmware: Cancel Browser Update/press") !== -1)) {
+                throw new Error("Successful rollback upload unexpectedly cleared reboot recovery state");
+              }
+            }
+          }
+
+          if (${JSON.stringify(scenario.name)} === "firmware-index-unavailable") {
+            const card = expandCard("Firmware");
+            await new Promise((resolve) => setTimeout(resolve, 200));
+            if (Array.from(card.querySelectorAll(".inline-disclosure")).some((item) => item.textContent.indexOf("Previous firmware") !== -1 && item.style.display !== "none")) {
+              throw new Error("Previous firmware panel should be hidden when the version index is unavailable");
+            }
+            const updates = expandDisclosure("Firmware updates");
+            if (!Array.from(updates.querySelectorAll("button")).some((button) => button.textContent.trim() === "Check for Update")) {
+              throw new Error("Manual firmware check is unavailable without the public version index");
+            }
+          }
+
+          if (${JSON.stringify(scenario.name)} === "firmware-newer-prerelease") {
+            const card = expandCard("Firmware");
+            await waitFor(() => card.textContent.indexOf("v1.0.1") !== -1, 4000, "stable firmware version index");
+            const updates = expandDisclosure("Firmware updates");
+            const action = updates.querySelector(".fw-actions button");
+            if (!action || action.textContent.trim() !== "Check for Update") {
+              throw new Error("An older stable release was offered as an update to a newer prerelease");
+            }
+            if (updates.querySelector(".disclosure-badge.active")) {
+              throw new Error("An older stable release activated the update badge");
+            }
+            const previous = expandDisclosure("Previous firmware");
+            const stableRollback = Array.from(previous.querySelectorAll("option")).find((option) => option.value === "v1.0.1");
+            if (!stableRollback) {
+              throw new Error("The latest stable release was missing from prerelease rollback choices");
+            }
+            action.click();
+            await waitFor(() => window.__smoke.posts.some((url) => url.indexOf("Firmware: Check for Update/press") !== -1), 4000, "prerelease update check");
+            await new Promise((resolve) => setTimeout(resolve, 4500));
+            if (window.__smoke.posts.includes("/update") || window.__smoke.posts.some((url) => url.indexOf("Firmware: Update/install") !== -1)) {
+              throw new Error("Checking from a newer prerelease started a downgrade");
+            }
+          }
+
+          if (${JSON.stringify(scenario.name)} === "firmware-second-device-index") {
+            await requireFirmwarePanels();
+            if (!window.__smoke.fetchedUrls.some((url) => url.indexOf(${JSON.stringify(expectedFirmwareVersionsPath)}) !== -1)) {
+              throw new Error("Firmware history was not loaded from the installed panel's release index");
             }
           }
 
@@ -959,7 +1193,7 @@ function smokeAssertionsForScenario(scenario) {
             requirePostContains("Import select field", "Photos: Source", "option=Person");
             requirePostContains("Import number field", "Screen: Daytime Brightness", "value=90");
             requirePostContains("Import aggregate NTP field", "Clock: NTP Server 1");
-            requirePostContains("Import URL field", "Firmware: Manifest URL");
+            requirePostContains("Import WiFi auto-update field", "WiFi Firmware: Auto Update", "turn_on");
             requirePostContains("Import normalized schedule setting", "Screen: Schedule Wake Timeout", "value=120");
           }
 
@@ -1118,7 +1352,7 @@ async function runScenario(scenario) {
   const passToken = `ESPFRAME_BROWSER_SMOKE_${scenario.name.toUpperCase().replace(/-/g, "_")}_PASS`;
   if (!output.includes(passToken)) {
     assert.equal(result.timedOut, false, `Chrome timed out for ${scenario.name}:\n${output}`);
-    assert.equal(result.status, 0, `Chrome failed for ${scenario.name}:\n${output}`);
+    assert.equal(result.status, 0, `Chrome failed for ${scenario.name} (signal: ${result.signal || "none"}):\n${output}`);
   }
   assert.ok(output.includes(passToken), `Browser smoke scenario ${scenario.name} failed:\n${output}`);
 }

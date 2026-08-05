@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import re
+import shutil
 import sys
 import time
 import urllib.error
@@ -34,6 +35,8 @@ PLACEHOLDER_STRINGS = {
 RELEASE_URL_BASE = project_value("release_url_base", "https://github.com/jtenniswood/espframe/releases/tag/")
 PROJECT_NAME = project_value("package_name", "jtenniswood.immich-frame")
 RELEASE_VERSION_RE = re.compile(str(PROJECT.get("release_version_pattern", r"^v\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$")))
+STABLE_RELEASE_VERSION_RE = re.compile(r"^v\d+\.\d+\.\d+$")
+MD5_RE = re.compile(r"^[0-9a-f]{32}$")
 
 
 @dataclass(frozen=True)
@@ -110,11 +113,11 @@ def public_manifest_name(slug: str, beta: bool = False) -> str:
     return Path(public_manifest_path(slug, beta=beta)).name
 
 
-def manifest_names(slug: str, beta: bool = False) -> list[str]:
+def manifest_names(slug: str, beta: bool = False, include_public_name: bool = True) -> list[str]:
     public_name = public_manifest_name(slug, beta=beta)
-    names = [f"{slug}.manifest.json", public_name]
-    if slug not in DEVICES or public_name == "manifest.json":
-        names.append("manifest.json")
+    names = [f"{slug}.manifest.json"]
+    if include_public_name:
+        names.append(public_name)
     result: list[str] = []
     for name in names:
         if name not in result:
@@ -269,15 +272,33 @@ def find_first(paths: list[Path]) -> Path | None:
     return None
 
 
-def locate_release_files(base_dir: Path, slug: str) -> tuple[Path, Path, Path]:
-    dirs = [base_dir / slug, base_dir]
+def public_manifest_directory(base_dir: Path, slug: str, beta: bool = False) -> Path:
+    path = Path(public_manifest_path(slug, beta=beta))
+    if path.parts and path.parts[0] == base_dir.name:
+        path = Path(*path.parts[1:])
+    return base_dir / path.parent
+
+
+def locate_release_files(
+    base_dir: Path,
+    slug: str,
+    allow_missing: bool = False,
+) -> tuple[Path, Path, Path] | None:
+    public_dir = public_manifest_directory(base_dir, slug)
+    dirs = list(dict.fromkeys([public_dir, base_dir / slug, base_dir]))
     manifests = []
     factories = []
     otas = []
     for directory in dirs:
-        manifests.extend(directory / name for name in manifest_names(slug))
+        manifests.extend(
+            directory / name
+            for name in manifest_names(slug, include_public_name=directory == public_dir)
+        )
         factories.append(directory / f"{slug}.factory.bin")
         otas.append(directory / f"{slug}.ota.bin")
+
+    if allow_missing and not any(path.is_file() for path in [*manifests, *factories, *otas]):
+        return None
 
     manifest = find_first(manifests)
     factory = find_first(factories)
@@ -292,12 +313,21 @@ def locate_release_files(base_dir: Path, slug: str) -> tuple[Path, Path, Path]:
 
 
 def locate_beta_files(base_dir: Path, slug: str) -> tuple[Path, Path | None, Path] | None:
-    dirs = [base_dir / slug / "beta", base_dir / "beta" / slug, base_dir / "beta"]
+    public_dir = public_manifest_directory(base_dir, slug, beta=True)
+    dirs = list(dict.fromkeys([
+        public_dir,
+        base_dir / slug / "beta",
+        base_dir / "beta" / slug,
+        base_dir / "beta",
+    ]))
     manifests = []
     factories = []
     otas = []
     for directory in dirs:
-        manifests.extend(directory / name for name in manifest_names(slug, beta=True))
+        manifests.extend(
+            directory / name
+            for name in manifest_names(slug, beta=True, include_public_name=directory == public_dir)
+        )
         factories.append(directory / f"{slug}.factory.bin")
         otas.append(directory / f"{slug}.ota.bin")
 
@@ -321,15 +351,126 @@ def manifest_version(path: Path) -> str:
     return version
 
 
-def verify_directory(base_dir: Path, slugs: list[str], version: str) -> None:
+def versions_index_path(manifest_path: Path) -> Path:
+    return manifest_path.parent / "versions.json"
+
+
+def verify_versions_index(index_path: Path, slug: str, current_version: str) -> None:
+    require_file(index_path, "firmware versions index")
+    try:
+        index = json.loads(index_path.read_text())
+    except json.JSONDecodeError as exc:
+        raise FirmwareReleaseError(f"{index_path} is not valid JSON: {exc}") from exc
+
+    if not isinstance(index, dict) or index.get("device") != slug:
+        raise FirmwareReleaseError(f"{index_path} device must be {slug}")
+    versions = index.get("versions")
+    if not isinstance(versions, list) or not versions or len(versions) > 5:
+        raise FirmwareReleaseError(f"{index_path} must contain between one and five versions")
+
+    seen: set[str] = set()
+    for position, entry in enumerate(versions):
+        if not isinstance(entry, dict):
+            raise FirmwareReleaseError(f"{index_path} version {position + 1} is not an object")
+        version = str(entry.get("version", "")).strip()
+        if not STABLE_RELEASE_VERSION_RE.fullmatch(version):
+            raise FirmwareReleaseError(f"{index_path} contains invalid stable version {version!r}")
+        if version in seen:
+            raise FirmwareReleaseError(f"{index_path} contains duplicate version {version}")
+        seen.add(version)
+        if position == 0 and version != current_version:
+            raise FirmwareReleaseError(
+                f"{index_path} current version {version!r} does not match {current_version!r}"
+            )
+
+        release_url = str(entry.get("release_url", "")).strip()
+        expected_release_url = RELEASE_URL_BASE + version
+        if release_url != expected_release_url:
+            raise FirmwareReleaseError(f"{index_path} release_url must be {expected_release_url}")
+
+        ota = entry.get("ota")
+        if not isinstance(ota, dict):
+            raise FirmwareReleaseError(f"{index_path} version {version} has no ota object")
+        ota_path_value = str(ota.get("path", "")).strip()
+        ota_path = Path(ota_path_value)
+        if (
+            not ota_path_value
+            or ota_path.is_absolute()
+            or ".." in ota_path.parts
+            or ota_path.name != f"{slug}.ota.bin"
+        ):
+            raise FirmwareReleaseError(f"{index_path} version {version} has an invalid OTA path")
+        expected_md5 = str(ota.get("md5", "")).strip().lower()
+        if not MD5_RE.fullmatch(expected_md5):
+            raise FirmwareReleaseError(f"{index_path} version {version} has an invalid OTA md5")
+        image_path = index_path.parent / ota_path
+        require_file(image_path, f"OTA firmware for {version}")
+        if md5sum(image_path) != expected_md5:
+            raise FirmwareReleaseError(f"{index_path} OTA md5 does not match {ota_path_value}")
+        assert_binary_version(image_path, version)
+
+
+def verify_directory(
+    base_dir: Path,
+    slugs: list[str],
+    version: str,
+    allow_missing_slugs: set[str] | None = None,
+) -> None:
+    optional_slugs = allow_missing_slugs or set()
     for slug in slugs:
-        manifest, factory, ota = locate_release_files(base_dir, slug)
+        release_files = locate_release_files(base_dir, slug, allow_missing=slug in optional_slugs)
+        if release_files is None:
+            continue
+        manifest, factory, ota = release_files
         verify_files(slug, version, manifest, factory, ota)
+
+        index_path = versions_index_path(manifest)
+        if index_path.is_file():
+            verify_versions_index(index_path, slug, version)
 
         beta = locate_beta_files(base_dir, slug)
         if beta is not None:
             beta_manifest, beta_factory, beta_ota = beta
             verify_files(slug, manifest_version(beta_manifest), beta_manifest, beta_factory, beta_ota)
+
+
+def stage_release_assets(
+    source_dir: Path,
+    target_root: Path,
+    slugs: list[str],
+    beta: bool = False,
+    allow_missing: bool = False,
+    allow_missing_slugs: set[str] | None = None,
+) -> None:
+    target_root = target_root.resolve()
+    optional_slugs = allow_missing_slugs or set()
+    for slug in slugs:
+        source_manifest = source_dir / f"{slug}.manifest.json"
+        source_factory = source_dir / f"{slug}.factory.bin"
+        source_ota = source_dir / f"{slug}.ota.bin"
+        sources = (
+            (source_manifest, "firmware manifest"),
+            (source_factory, "factory firmware"),
+            (source_ota, "OTA firmware"),
+        )
+        if (allow_missing or slug in optional_slugs) and not any(source.is_file() for source, _ in sources):
+            continue
+        for source, label in sources:
+            require_file(source, label)
+
+        target_manifest = (target_root / public_manifest_path(slug, beta=beta)).resolve()
+        if target_root != target_manifest and target_root not in target_manifest.parents:
+            raise FirmwareReleaseError(f"Public manifest path escapes output directory: {target_manifest}")
+        target_dir = target_manifest.parent
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        for source, target in (
+            (source_manifest, target_manifest),
+            (source_factory, target_dir / source_factory.name),
+            (source_ota, target_dir / source_ota.name),
+        ):
+            if source.resolve() != target.resolve():
+                shutil.copy2(source, target)
 
 
 def fetch_url(url: str, timeout: int = 30) -> bytes:
@@ -346,6 +487,25 @@ def download(url: str, path: Path) -> None:
 def public_manifest_url(base_url: str, slug: str, beta: bool = False) -> str:
     path = public_manifest_path(slug, beta=beta)
     return base_url.rstrip("/") + "/" + path
+
+
+def download_and_verify_public_versions(
+    base_url: str, slug: str, version: str, out_dir: Path
+) -> None:
+    manifest_url = public_manifest_url(base_url, slug)
+    index_url = urljoin(manifest_url, "versions.json")
+    index_path = out_dir / slug / "versions.json"
+    download(index_url, index_path)
+    index = load_manifest(index_path)
+    versions = index.get("versions")
+    if isinstance(versions, list):
+        for entry in versions:
+            if not isinstance(entry, dict) or not isinstance(entry.get("ota"), dict):
+                continue
+            ota_path = str(entry["ota"].get("path", "")).strip()
+            if ota_path:
+                download(urljoin(index_url, ota_path), index_path.parent / ota_path)
+    verify_versions_index(index_path, slug, version)
 
 
 def download_and_verify_public_slug(base_url: str, slug: str, version: str, out_dir: Path, beta: bool = False) -> None:
@@ -373,14 +533,29 @@ def download_and_verify_public_slug(base_url: str, slug: str, version: str, out_
     verify_files(slug, expected_version, manifest_path, factory_path, ota_path)
 
 
-def verify_pages(base_url: str, slugs: list[str], version: str, retries: int, delay: float) -> None:
+def verify_pages(
+    base_url: str,
+    slugs: list[str],
+    version: str,
+    retries: int,
+    delay: float,
+    allow_missing_slugs: set[str] | None = None,
+) -> None:
+    optional_slugs = allow_missing_slugs or set()
     last_error: Exception | None = None
     for attempt in range(1, retries + 1):
         try:
             with TemporaryDirectory() as tmp:
                 out_dir = Path(tmp)
                 for slug in slugs:
-                    download_and_verify_public_slug(base_url, slug, version, out_dir, beta=False)
+                    try:
+                        download_and_verify_public_slug(base_url, slug, version, out_dir, beta=False)
+                    except urllib.error.HTTPError as exc:
+                        expected_manifest_url = public_manifest_url(base_url, slug, beta=False)
+                        if slug in optional_slugs and exc.code == 404 and exc.geturl() == expected_manifest_url:
+                            continue
+                        raise
+                    download_and_verify_public_versions(base_url, slug, version, out_dir)
                     try:
                         download_and_verify_public_slug(base_url, slug, version, out_dir, beta=True)
                     except urllib.error.HTTPError as exc:
@@ -444,11 +619,34 @@ def cmd_verify_files(args: argparse.Namespace) -> None:
 
 
 def cmd_verify_directory(args: argparse.Namespace) -> None:
-    verify_directory(Path(args.dir), args.slugs, args.version)
+    verify_directory(
+        Path(args.dir),
+        args.slugs,
+        args.version,
+        allow_missing_slugs=set(args.allow_missing_slugs),
+    )
+
+
+def cmd_stage_directory(args: argparse.Namespace) -> None:
+    stage_release_assets(
+        Path(args.source),
+        Path(args.dir),
+        args.slugs,
+        beta=args.beta,
+        allow_missing=args.allow_missing,
+        allow_missing_slugs=set(args.allow_missing_slugs),
+    )
 
 
 def cmd_verify_pages(args: argparse.Namespace) -> None:
-    verify_pages(args.base_url, args.slugs, args.version, args.retries, args.delay)
+    verify_pages(
+        args.base_url,
+        args.slugs,
+        args.version,
+        args.retries,
+        args.delay,
+        allow_missing_slugs=set(args.allow_missing_slugs),
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -481,7 +679,17 @@ def build_parser() -> argparse.ArgumentParser:
     verify_directory_cmd.add_argument("--version", required=True)
     verify_directory_cmd.add_argument("--dir", required=True)
     verify_directory_cmd.add_argument("--slugs", nargs="+", required=True)
+    verify_directory_cmd.add_argument("--allow-missing-slugs", nargs="+", default=[])
     verify_directory_cmd.set_defaults(func=cmd_verify_directory)
+
+    stage_directory_cmd = sub.add_parser("stage-directory", help="Stage release assets at their public paths")
+    stage_directory_cmd.add_argument("--source", required=True)
+    stage_directory_cmd.add_argument("--dir", required=True)
+    stage_directory_cmd.add_argument("--slugs", nargs="+", required=True)
+    stage_directory_cmd.add_argument("--beta", action="store_true")
+    stage_directory_cmd.add_argument("--allow-missing", action="store_true")
+    stage_directory_cmd.add_argument("--allow-missing-slugs", nargs="+", default=[])
+    stage_directory_cmd.set_defaults(func=cmd_stage_directory)
 
     verify_pages_cmd = sub.add_parser("verify-pages", help="Verify public GitHub Pages firmware")
     verify_pages_cmd.add_argument("--version", required=True)
@@ -489,6 +697,7 @@ def build_parser() -> argparse.ArgumentParser:
     verify_pages_cmd.add_argument("--slugs", nargs="+", required=True)
     verify_pages_cmd.add_argument("--retries", type=int, default=1)
     verify_pages_cmd.add_argument("--delay", type=float, default=15)
+    verify_pages_cmd.add_argument("--allow-missing-slugs", nargs="+", default=[])
     verify_pages_cmd.set_defaults(func=cmd_verify_pages)
 
     return parser

@@ -116,8 +116,6 @@
       "stable"
     ],
     "firmware_manual_check_behavior": "only checks for updates; it does not install",
-    "firmware_custom_manifest_requirement": "full http:// or https:// URL",
-    "firmware_manifest_url_length_limit": 255,
     "firmware_update_frequency_hours": {
       "Hourly": 1,
       "Daily": 24,
@@ -175,7 +173,7 @@
       "firmware_updates": [
         "auto_update",
         "update_frequency",
-        "manifest_url"
+        "wifi_auto_update"
       ],
       "clock": [
         "show",
@@ -229,7 +227,7 @@
       "firmware_updates": {
         "auto_update": "auto_update",
         "update_frequency": "update_frequency",
-        "manifest_url": "firmware_manifest_url"
+        "wifi_auto_update": "c6_auto_update"
       },
       "clock": {
         "show": "show_clock",
@@ -285,12 +283,6 @@
             "Import skipped invalid album IDs",
             "Import skipped invalid person IDs",
             "Import skipped invalid tag IDs"
-          ]
-        },
-        {
-          "path": "tests/fixtures/compat/espframe-config-v1-invalid-manifest-urls.json",
-          "messages": [
-            "Stable firmware URL was invalid - not imported"
           ]
         }
       ],
@@ -624,6 +616,7 @@
         "id": "screen_brightness",
         "label": "Screen Brightness",
         "tab": "settings",
+        "section": "Display",
         "function": "makeScreenBrightnessCard",
         "settings": [
           "brightness_day",
@@ -638,6 +631,7 @@
         "id": "screen_tone",
         "label": "Screen Tone",
         "tab": "settings",
+        "section": "Display",
         "function": "makeScreenToneCard",
         "settings": [
           "base_tone_enabled",
@@ -648,9 +642,23 @@
         ]
       },
       {
+        "id": "rotation",
+        "label": "Rotation",
+        "tab": "settings",
+        "section": "Display",
+        "function": "makeRotationCard",
+        "settings": [
+          "screen_rotation"
+        ],
+        "static_entities": [
+          "developer_features_enabled"
+        ]
+      },
+      {
         "id": "night_schedule",
         "label": "Night Schedule",
         "tab": "settings",
+        "section": "Sleep & Schedule",
         "function": "makeNightScheduleCard",
         "settings": [
           "schedule_enabled",
@@ -664,21 +672,10 @@
         ]
       },
       {
-        "id": "rotation",
-        "label": "Rotation",
-        "tab": "settings",
-        "function": "makeRotationCard",
-        "settings": [
-          "screen_rotation"
-        ],
-        "static_entities": [
-          "developer_features_enabled"
-        ]
-      },
-      {
         "id": "clock",
         "label": "Clock",
         "tab": "settings",
+        "section": "Preferences",
         "function": "makeClockCard",
         "settings": [
           "clock_format"
@@ -692,27 +689,44 @@
         ]
       },
       {
+        "id": "backup",
+        "label": "Backup",
+        "tab": "settings",
+        "section": "System",
+        "function": "makeBackupCard"
+      },
+      {
         "id": "firmware",
         "label": "Firmware",
         "tab": "settings",
+        "section": "System",
         "function": "makeFirmwareCard",
         "settings": [
           "update_frequency",
           "auto_update",
-          "firmware_manifest_url"
+          "c6_auto_update"
         ],
         "static_entities": [
-          "firmware"
+          "firmware_device",
+          "firmware",
+          "c6_current_firmware",
+          "c6_available_firmware",
+          "c6_update_status"
         ],
         "manual_entities": [
           "update",
-          "firmware_check"
+          "firmware_prepare_upload",
+          "firmware_cancel_upload",
+          "firmware_check",
+          "c6_firmware_check",
+          "c6_firmware_install"
         ]
       },
       {
         "id": "device_reboot",
         "label": "Device Reboot",
         "tab": "settings",
+        "section": "System",
         "function": "makeDeviceRebootCard",
         "settings": [],
         "static_entities": [],
@@ -721,33 +735,14 @@
         ]
       },
       {
-        "id": "wifi",
-        "label": "WiFi",
-        "tab": "settings",
-        "function": "makeWifiCard",
-        "static_entities": [
-          "c6_current_firmware",
-          "c6_available_firmware"
-        ],
-        "manual_entities": [
-          "c6_firmware_check",
-          "c6_firmware_install"
-        ]
-      },
-      {
         "id": "developer",
         "label": "Developer",
         "tab": "settings",
+        "section": "System",
         "function": "makeDeveloperCard",
         "static_entities": [
           "developer_features_enabled"
         ]
-      },
-      {
-        "id": "backup",
-        "label": "Backup",
-        "tab": "settings",
-        "function": "makeBackupCard"
       }
     ],
     "web_ui_logs_event_source": "/events",
@@ -781,9 +776,15 @@
       "schedule_"
     ],
     "web_initial_fetch_first_keys": [
+      "firmware_device",
       "firmware"
     ],
     "web_static_entities": {
+      "firmware_device": {
+        "entity": "text_sensor/Firmware: Device",
+        "firmware_file": "common/addon/firmware_update.yaml",
+        "fetch": true
+      },
       "firmware": {
         "entity": "text_sensor/Firmware: Version",
         "firmware_file": "common/addon/firmware_update.yaml",
@@ -877,6 +878,12 @@
         "firmware_file": "common/addon/esp32_c6_firmware_update.yaml",
         "default": "Unknown",
         "fetch": true
+      },
+      "c6_update_status": {
+        "entity": "text_sensor/ESP32-C6: Update Available",
+        "firmware_file": "common/addon/esp32_c6_firmware_update.yaml",
+        "default": "Unknown",
+        "fetch": true
       }
     },
     "web_manual_entities": {
@@ -902,6 +909,14 @@
       },
       "firmware_check": {
         "entity": "button/Firmware: Check for Update",
+        "firmware_file": "common/addon/firmware_update.yaml"
+      },
+      "firmware_prepare_upload": {
+        "entity": "button/Firmware: Prepare Browser Update",
+        "firmware_file": "common/addon/firmware_update.yaml"
+      },
+      "firmware_cancel_upload": {
+        "entity": "button/Firmware: Cancel Browser Update",
         "firmware_file": "common/addon/firmware_update.yaml"
       },
       "c6_firmware_check": {
@@ -1046,7 +1061,7 @@
           "settings": [
             "auto_update",
             "update_frequency",
-            "firmware_manifest_url"
+            "c6_auto_update"
           ]
         }
       }
@@ -1059,6 +1074,17 @@
       "immich_url",
       "installed_version",
       "latest_version",
+      "firmware_checking",
+      "firmware_install_error",
+      "firmware_installing",
+      "firmware_restart_pending",
+      "firmware_selected_version",
+      "firmware_uploading",
+      "firmware_version_options",
+      "firmware_versions_loaded",
+      "firmware_versions_loading",
+      "c6_firmware_checking",
+      "c6_firmware_installing",
       "tz_labels",
       "tz_options",
       "update_available"
@@ -1117,8 +1143,7 @@
       "*.ota.bin"
     ],
     "release_manifest_download_patterns": [
-      "${SLUG}.manifest.json",
-      "manifest.json"
+      "${SLUG}.manifest.json"
     ],
     "release_uploaded_verify_patterns": [
       "*.manifest.json",
@@ -1279,12 +1304,14 @@
       "components/espframe/tz_data_generated.h",
       "common/addon/time.yaml",
       "devices/guition-esp32-p4-jc8012p4a1/packages.yaml",
+      "devices/guition-esp32-p4-jc8012p4a1-v2/packages.yaml",
       "docs/public/webserver/app.js",
       "docs/public/webserver/style.css"
     ],
     "generated_asset_output_headers": {
       "components/espframe/configuration_contract_generated.h": "// ESPFRAME: generated from product/contract; run `npm run generate` to update.",
       "devices/guition-esp32-p4-jc8012p4a1/packages.yaml": "# ESPFRAME: generated from product/contract; run `npm run generate` to update.",
+      "devices/guition-esp32-p4-jc8012p4a1-v2/packages.yaml": "# ESPFRAME: generated from product/contract; run `npm run generate` to update.",
       "docs/public/webserver/app.js": "// ESPFRAME: generated from typed docs/webserver/src and product/contract; run `npm run generate` to update.",
       "docs/public/webserver/style.css": "/* ESPFRAME: generated from docs/webserver/src/style.css; run `npm run generate` to update. */"
     },
@@ -1329,11 +1356,13 @@
       "__ESPFRAME_LIVE_RENDER_STATE_KEYS__",
       "__ESPFRAME_LIVE_RENDER_STATE_PREFIXES__",
       "__ESPFRAME_FIRMWARE_MANIFEST_URLS__",
+      "__ESPFRAME_FIRMWARE_DEVICE_SLUG__",
       "__ESPFRAME_DOCS_BASE_URL__",
       "__ESPFRAME_WEB_UI_TABS__",
       "__ESPFRAME_WEB_UI_CARDS__",
       "__ESPFRAME_WEB_UI_LOGS_RETAINED_LINES__",
       "__ESPFRAME_SUPPORT_URL__",
+      "__ESPFRAME_SUPPORT_BUTTON_IMAGE_DATA_URI__",
       "__ESPFRAME_WEB_CONTRACTS__",
       "__ESPFRAME_WEB_APP_SHELL__",
       "__ESPFRAME_WEB_ENDPOINTS__",
@@ -1370,14 +1399,7 @@
       "clock_format": {},
       "update_frequency": {},
       "auto_update": {},
-      "firmware_manifest_url": {
-        "optimistic": false,
-        "restore_value": true,
-        "initial_value": "${firmware_manifest_url}",
-        "min_length": 0,
-        "max_length": 255,
-        "mode": "text"
-      },
+      "c6_auto_update": {},
       "date_filter_enabled": {},
       "date_from": {
         "optimistic": false,
@@ -1560,6 +1582,9 @@
       "friendly_name": "Immich Frame 10inch",
       "chip": "ESP32-P4",
       "model": "Guition ESP32-P4 JC8012P4A1",
+      "panel_revision": "original",
+      "rear_case_marking": "2627 or lower",
+      "display_controller": "JD9365",
       "esp32_variant": "ESP32P4",
       "flash_size": "16MB",
       "framework_type": "esp-idf",
@@ -1716,6 +1741,7 @@
         "screen_rotation_180": "270",
         "screen_rotation_270": "0",
         "captive_portal_ip": "192.168.4.1",
+        "firmware_device_slug": "immich-frame",
         "firmware_manifest_url": "https://jtenniswood.github.io/espframe/firmware/manifest.json"
       },
       "font_assets": [
@@ -1779,6 +1805,237 @@
       "device_yaml": "devices/guition-esp32-p4-jc8012p4a1/device/device.yaml",
       "public_manifest": "firmware/manifest.json",
       "public_beta_manifest": "firmware/beta/manifest.json"
+    },
+    {
+      "slug": "immich-frame-v2",
+      "name": "Immich Frame New Panel",
+      "esphome_name": "immich-frame-10inch-v2",
+      "friendly_name": "Immich Frame 10inch New Panel",
+      "chip": "ESP32-P4",
+      "model": "Guition ESP32-P4 JC8012P4A1",
+      "esp32_variant": "ESP32P4",
+      "flash_size": "16MB",
+      "framework_type": "esp-idf",
+      "engineering_sample": true,
+      "idf_experimental_features": true,
+      "sdkconfig_options": {
+        "CONFIG_HTTPD_MAX_URI_LEN": "128",
+        "CONFIG_ESP_TASK_WDT_TIMEOUT_S": "30"
+      },
+      "platformio_flash_mode": "dio",
+      "platformio_build_flags": [
+        "-DCONFIG_COMPILER_OPTIMIZATION_PERF=y",
+        "-DLV_USE_BIDI=1",
+        "-DLV_USE_ARABIC_PERSIAN_CHARS=1"
+      ],
+      "esp32_hosted_variant": "esp32c6",
+      "psram_mode": "hex",
+      "psram_speed": "200MHz",
+      "display_panel": "CUSTOM",
+      "display_native_width": 800,
+      "display_native_height": 1280,
+      "display_ui_width": 1280,
+      "display_ui_height": 800,
+      "lvgl_buffer_size": "6%",
+      "lvgl_byte_order": "little_endian",
+      "lvgl_rotation_substitution": "screen_rotation_0",
+      "lvgl_resume_on_input": true,
+      "touch_platform": "gsl3680",
+      "hardware_pins": {
+        "esp32_hosted_reset": "GPIO54",
+        "esp32_hosted_cmd": "GPIO19",
+        "esp32_hosted_clk": "GPIO18",
+        "esp32_hosted_d0": "GPIO14",
+        "esp32_hosted_d1": "GPIO15",
+        "esp32_hosted_d2": "GPIO16",
+        "esp32_hosted_d3": "GPIO17",
+        "backlight_pwm": "GPIO23",
+        "display_reset": "GPIO27",
+        "touch_reset": "GPIO22",
+        "touch_interrupt": "GPIO21",
+        "i2c_sda": "GPIO7",
+        "i2c_scl": "GPIO8"
+      },
+      "mipi_dsi_power_rail": {
+        "id": "dsi_phy_enable",
+        "channel": 3,
+        "voltage": "2.5V"
+      },
+      "i2c_frequency": "400kHz",
+      "package_includes": [
+        {
+          "alias": "device",
+          "path": "device/device.yaml"
+        },
+        {
+          "alias": "fonts",
+          "path": "../guition-esp32-p4-jc8012p4a1/assets/fonts.yaml"
+        },
+        {
+          "alias": "icons",
+          "path": "../guition-esp32-p4-jc8012p4a1/assets/icons.yaml"
+        },
+        {
+          "alias": "lvgl_base",
+          "path": "../guition-esp32-p4-jc8012p4a1/device/lvgl_base.yaml"
+        },
+        {
+          "alias": "screen_rotation",
+          "path": "../../common/addon/screen_rotation.yaml"
+        },
+        {
+          "alias": "connectivity",
+          "path": "../../common/addon/connectivity.yaml"
+        },
+        {
+          "alias": "immich_config",
+          "path": "../../common/addon/immich_config.yaml"
+        },
+        {
+          "alias": "immich_filter",
+          "path": "../../common/addon/immich_filter.yaml"
+        },
+        {
+          "alias": "backlight",
+          "path": "../../common/addon/backlight.yaml"
+        },
+        {
+          "alias": "backlight_sched",
+          "path": "../../common/addon/backlight_schedule.yaml"
+        },
+        {
+          "alias": "time_sync",
+          "path": "../../common/addon/time.yaml"
+        },
+        {
+          "alias": "accent_color",
+          "path": "../../common/addon/accent_color.yaml"
+        },
+        {
+          "alias": "warm_tones",
+          "path": "../../common/addon/warm_tones.yaml"
+        },
+        {
+          "alias": "screen_loading",
+          "path": "../guition-esp32-p4-jc8012p4a1/device/screen_loading.yaml"
+        },
+        {
+          "alias": "screen_wifi",
+          "path": "../guition-esp32-p4-jc8012p4a1/device/screen_wifi_setup.yaml"
+        },
+        {
+          "alias": "screen_setup",
+          "path": "../guition-esp32-p4-jc8012p4a1/device/screen_immich_setup.yaml"
+        },
+        {
+          "alias": "immich_api",
+          "path": "../../common/addon/immich_api.yaml"
+        },
+        {
+          "alias": "immich_slide",
+          "path": "../../common/addon/immich_slideshow.yaml"
+        },
+        {
+          "alias": "screen_slide",
+          "path": "../guition-esp32-p4-jc8012p4a1/device/screen_slideshow.yaml"
+        },
+        {
+          "alias": "fw_update",
+          "path": "../../common/addon/firmware_update.yaml"
+        },
+        {
+          "alias": "c6_fw_update",
+          "path": "../../common/addon/esp32_c6_firmware_update.yaml"
+        },
+        {
+          "alias": "dev_features",
+          "path": "../../common/addon/developer_features.yaml"
+        },
+        {
+          "alias": "network",
+          "path": "../../common/addon/network.yaml"
+        }
+      ],
+      "package_substitutions": {
+        "display_width": "1280",
+        "display_height": "800",
+        "portrait_display_width": "800",
+        "portrait_display_height": "1280",
+        "portrait_metadata_width": "710",
+        "portrait_half_width": "640",
+        "screen_rotation": "0",
+        "screen_rotation_0": "90",
+        "screen_rotation_90": "180",
+        "screen_rotation_180": "270",
+        "screen_rotation_270": "0",
+        "captive_portal_ip": "192.168.4.1",
+        "firmware_device_slug": "immich-frame-v2",
+        "firmware_manifest_url": "https://jtenniswood.github.io/espframe/firmware/jc8012p4a1-v2/manifest.json"
+      },
+      "font_assets": [
+        {
+          "id": "noto_325_150_font",
+          "file": "gfonts://Noto Sans@325",
+          "size": 150,
+          "bpp": 4
+        },
+        {
+          "id": "noto_400_46_font",
+          "file": "gfonts://Noto Sans@400",
+          "size": 46,
+          "bpp": 4
+        },
+        {
+          "id": "noto_400_30_font",
+          "file": "gfonts://Noto Sans@400",
+          "size": 30,
+          "bpp": 4
+        },
+        {
+          "id": "noto_400_28_font",
+          "file": "gfonts://Noto Sans@400",
+          "size": 28,
+          "bpp": 4
+        },
+        {
+          "id": "noto_400_32_font",
+          "file": "gfonts://Noto Sans@400",
+          "size": 32,
+          "bpp": 4
+        },
+        {
+          "id": "noto_location_400_36_font",
+          "file": "gfonts://Noto Sans@400",
+          "size": 36,
+          "bpp": 4
+        }
+      ],
+      "location_font_extra_files": [
+        "gfonts://Noto Sans Arabic@400",
+        "gfonts://Noto Sans Hebrew@400"
+      ],
+      "icon_font": {
+        "id": "icon_font_setup",
+        "file": "https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf",
+        "size": 64,
+        "bpp": 4
+      },
+      "icon_substitutions": {
+        "icon_wifi": "\\U000F05A9",
+        "icon_cog": "\\U000F0493",
+        "icon_cloud_off": "\\U000F0164"
+      },
+      "panel_url": "https://s.click.aliexpress.com/e/_c4LLo3rH",
+      "stand_url": "https://makerworld.com/en/models/2490049-guition-p4-10inch-screen-stand#profileId-2736046",
+      "build_yaml": "builds/guition-esp32-p4-jc8012p4a1-v2.factory.yaml",
+      "package_yaml": "devices/guition-esp32-p4-jc8012p4a1-v2/packages.yaml",
+      "local_yaml": "devices/guition-esp32-p4-jc8012p4a1-v2/esphome.yaml",
+      "device_yaml": "devices/guition-esp32-p4-jc8012p4a1-v2/device/device.yaml",
+      "public_manifest": "firmware/jc8012p4a1-v2/manifest.json",
+      "public_beta_manifest": "firmware/jc8012p4a1-v2/beta/manifest.json",
+      "panel_revision": "new",
+      "rear_case_marking": "2628 or higher",
+      "display_controller": "JD9365"
     }
   ],
   "settings": [
@@ -2092,18 +2349,17 @@
       ]
     },
     {
-      "key": "firmware_manifest_url",
+      "key": "c6_auto_update",
       "entity": {
-        "domain": "text",
-        "name": "Firmware: Manifest URL"
+        "domain": "switch",
+        "name": "WiFi Firmware: Auto Update"
       },
-      "default": "",
-      "docs_label": "Stable Manifest URL",
-      "docs_default": "Device default",
-      "docs_type": "Text",
-      "docs_description": "Advanced: custom stable update manifest",
+      "default": true,
+      "docs_label": "WiFi Firmware Auto Update",
+      "docs_default": "On",
+      "docs_description": "Check daily and install compatible ESP32-C6 WiFi firmware automatically",
       "firmware_files": [
-        "common/addon/firmware_update.yaml"
+        "common/addon/esp32_c6_firmware_update.yaml"
       ],
       "docs_files": [
         "docs/firmware-update.md"

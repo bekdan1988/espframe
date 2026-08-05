@@ -19,10 +19,10 @@ from product_contract.common import (
 )
 from product_config import (
     backup_schema,
-    default_public_manifest_urls,
     public_base_url,
     web_entity_aliases,
     web_entity_aliases_metadata,
+    web_firmware_manifest_urls,
     web_initial_fetch_keys,
     web_initial_fetch_first_keys,
     web_live_render_state_keys,
@@ -310,7 +310,7 @@ def check_generated_web_metadata(product: dict, web_text: str, errors: list[str]
         errors.append("Generated web LIVE_RENDER_STATE_PREFIXES does not match product/espframe.json")
 
     firmware_manifest_urls = extract_js_json_var(web_text, "FIRMWARE_MANIFEST_URLS", errors)
-    if firmware_manifest_urls is not None and firmware_manifest_urls != default_public_manifest_urls(product):
+    if firmware_manifest_urls is not None and firmware_manifest_urls != web_firmware_manifest_urls(product):
         errors.append("Generated web FIRMWARE_MANIFEST_URLS does not match product/espframe.json")
 
     docs_base_url = extract_js_json_var(web_text, "DOCS_BASE_URL", errors)
@@ -436,6 +436,8 @@ def check_web_ui_card_metadata(product: dict, web_template: str, web_text: str, 
     static_keys = set(web_static_entities(product))
     manual_keys = set(web_manual_entities(product))
     seen_card_ids: set[str] = set()
+    seen_settings_sections: set[str] = set()
+    current_settings_section = ""
     settings_by_card: dict[str, str] = {}
     combined_web = web_template + "\n" + web_text
 
@@ -450,6 +452,7 @@ def check_web_ui_card_metadata(product: dict, web_template: str, web_text: str, 
         card_id = str(card.get("id", "")).strip()
         label = str(card.get("label", "")).strip()
         tab = str(card.get("tab", "")).strip()
+        section = str(card.get("section", "")).strip()
         function_name = str(card.get("function", "")).strip()
         settings = card.get("settings", [])
         static_entities = card.get("static_entities", [])
@@ -472,6 +475,15 @@ def check_web_ui_card_metadata(product: dict, web_template: str, web_text: str, 
 
         if tab not in tab_ids:
             errors.append(f"{card_label} tab {tab!r} must point at project.web_ui_tabs")
+
+        if tab == "settings":
+            if not section:
+                errors.append(f"{card_label} must include a settings section")
+            elif section != current_settings_section:
+                if section in seen_settings_sections:
+                    errors.append(f"project.web_ui_cards settings section {section!r} must be contiguous")
+                seen_settings_sections.add(section)
+                current_settings_section = section
 
         if not re.match(r"^make[A-Za-z0-9]+Card$", function_name):
             errors.append(f"{card_label} function must name a make*Card function")
@@ -519,6 +531,10 @@ def check_web_ui_card_metadata(product: dict, web_template: str, web_text: str, 
     missing_settings = sorted(product_keys - set(settings_by_card))
     if missing_settings:
         errors.append("Product settings missing from project.web_ui_cards: " + ", ".join(missing_settings))
+
+    for section in ("Display", "Sleep & Schedule", "Preferences", "System"):
+        if section not in seen_settings_sections:
+            errors.append(f"project.web_ui_cards is missing settings section {section!r}")
 
 
 def check_web_template_key_references(product: dict, web_template: str, errors: list[str]) -> None:

@@ -133,6 +133,14 @@ def default_public_manifest_urls(product: dict[str, Any] | None = None) -> dict[
     return {"stable": urls["stable"]}
 
 
+def web_firmware_manifest_urls(product: dict[str, Any] | None = None) -> dict[str, Any]:
+    data = product if product is not None else load_product()
+    return {
+        **default_public_manifest_urls(data),
+        "devices": device_public_manifest_urls(data),
+    }
+
+
 def build_yaml_stem(build_yaml: str) -> str:
     name = Path(build_yaml).name
     if name.endswith(".factory.yaml"):
@@ -436,6 +444,7 @@ def web_ui_cards_metadata(product: dict[str, Any] | None = None) -> list[dict[st
                 "id": str(card.get("id", "")).strip(),
                 "label": str(card.get("label", "")).strip(),
                 "tab": str(card.get("tab", "")).strip(),
+                "section": str(card.get("section", "")).strip(),
                 "function": str(card.get("function", "")).strip(),
                 "settings": [str(value).strip() for value in card.get("settings", []) if str(value).strip()],
                 "staticEntities": [

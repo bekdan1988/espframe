@@ -14,6 +14,7 @@
 
 substitutions:
   firmware_version: "dev"
+  firmware_device_slug: "immich-frame"
   firmware_manifest_url: "https://jtenniswood.github.io/espframe/firmware/manifest.json"
 
 esphome:
@@ -31,8 +32,7 @@ esphome:
               - script.execute: firmware_update_recover_display
     - priority: -100
       then:
-        - lambda: |-
-            id(firmware_update).set_source_url(id(firmware_manifest_url_text).state);
+        - component.update: firmware_device_sensor
         - component.update: firmware_version_sensor
 
 # -----------------------------------------------------------------------------
@@ -128,36 +128,6 @@ update:
 # -----------------------------------------------------------------------------
 # User controls: auto-update and check frequency
 # -----------------------------------------------------------------------------
-text:
-  - platform: template
-    name: "Firmware: Manifest URL"
-    id: firmware_manifest_url_text
-    internal: true
-    entity_category: config
-    # ESPFRAME:SETTING_FIELDS firmware_manifest_url START
-    optimistic: false
-    restore_value: true
-    initial_value: "${firmware_manifest_url}"
-    min_length: 0
-    max_length: 255
-    mode: text
-    # ESPFRAME:SETTING_FIELDS firmware_manifest_url END
-    icon: "mdi:web"
-    web_server:
-      sorting_group_id: sg_firmware
-    set_action:
-      - lambda: |-
-          std::string url = strip_trailing_slashes(x);
-          if (url.empty()) url = "${firmware_manifest_url}";
-          if (!is_valid_http_url(url)) {
-            ESP_LOGW("firmware", "Firmware manifest URL must be a valid http(s)://host[:port]/path URL");
-            return;
-          }
-          id(firmware_manifest_url_text).publish_state(url);
-          id(firmware_update).set_source_url(url);
-          global_preferences->sync();
-          ESP_LOGI("firmware", "Firmware manifest URL configured: %s", url.c_str());
-
 switch:
   - platform: template
     name: "Firmware: Auto Update"
@@ -205,7 +175,6 @@ interval:
           else if (freq == "Weekly") threshold = 168;
           else if (freq == "Monthly") threshold = 720;
           if (counter % threshold == 0) {
-            id(firmware_update).set_source_url(id(firmware_manifest_url_text).state);
             id(firmware_update).update();
           }
           id(update_check_counter) = counter + 1;
@@ -214,6 +183,16 @@ interval:
 # Exposed version and manual check button
 # -----------------------------------------------------------------------------
 text_sensor:
+  - platform: template
+    name: "Firmware: Device"
+    id: firmware_device_sensor
+    entity_category: diagnostic
+    icon: "mdi:devices"
+    web_server:
+      sorting_group_id: sg_firmware
+    update_interval: never
+    lambda: 'return {"${firmware_device_slug}"};'
+
   - platform: template
     name: "Firmware: Version"
     id: firmware_version_sensor
@@ -226,6 +205,32 @@ text_sensor:
 
 button:
   - platform: template
+    name: "Firmware: Prepare Browser Update"
+    id: firmware_prepare_browser_update
+    entity_category: diagnostic
+    icon: "mdi:progress-upload"
+    disabled_by_default: true
+    web_server:
+      sorting_group_id: sg_firmware
+    on_press:
+      - lambda: |-
+          id(firmware_update_reboot_pending) = true;
+          global_preferences->sync();
+
+  - platform: template
+    name: "Firmware: Cancel Browser Update"
+    id: firmware_cancel_browser_update
+    entity_category: diagnostic
+    icon: "mdi:progress-close"
+    disabled_by_default: true
+    web_server:
+      sorting_group_id: sg_firmware
+    on_press:
+      - lambda: |-
+          id(firmware_update_reboot_pending) = false;
+          global_preferences->sync();
+
+  - platform: template
     name: "Firmware: Check for Update"
     entity_category: config
     icon: "mdi:update"
@@ -233,8 +238,6 @@ button:
       sorting_group_id: sg_firmware
     on_press:
       - lambda: 'id(manual_check_only) = true;'
-      - lambda: |-
-          id(firmware_update).set_source_url(id(firmware_manifest_url_text).state);
       - component.update: firmware_update
       - delay: 15s
       - lambda: 'id(manual_check_only) = false;'
