@@ -123,11 +123,17 @@ Use **Layout** to control how photos are chosen and fitted to the screen.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | **Portrait Pairing** | On | Pairs compatible portrait photos side-by-side on landscape screens. |
+| **Pairing Range** | Same Day | Choose whether portrait companions can be taken on the same day or up to one or two calendar days either side. |
+| **Paired Portraits Only** | Off | Skip portrait photos unless both images in a compatible pair are ready; landscape photos are unaffected. |
 | **Photo Orientation** | Any | Choose any photo, portrait-only photos, or landscape-only photos. Portrait-only is useful when the frame is mounted vertically. |
 | **Display Mode** | Fill | Fill crops to cover the screen; Fit letterboxes without cropping. |
 <!-- ESPFRAME:SETTINGS_TABLE layout END -->
 
 Portrait pairing is disabled while the screen is in portrait rotation.
+
+**Pairing Range** always checks the same calendar day first. With **±1 Day** or **±2 Days**, Espframe broadens the search only when it cannot find a same-day companion, then prefers the closest capture time in the wider range. The range is kept inside any date filter you have configured.
+
+Turn on **Paired Portraits Only** to skip a portrait when a complete pair cannot be loaded. Landscape photos continue to display normally. While Espframe searches for another eligible photo, the last successfully displayed photo stays on screen.
 
 ---
 
@@ -153,7 +159,7 @@ Use **Frequency** in the web UI to control slideshow timing and disconnect handl
 <!-- ESPFRAME:SETTINGS_TABLE frequency START -->
 | Setting | Default | Description |
 |---------|---------|-------------|
-| **Slideshow Interval** | 15 seconds | How long each photo is shown before advancing (10 seconds to 10 minutes). |
+| **Slideshow Interval** | 15 seconds | How long each photo is shown before advancing (10 seconds to 24 hours). |
 | **Connection Timeout** | 10 minutes | How long the frame waits without successfully displaying a new photo before showing the connection-failed screen (30 seconds to 30 minutes). |
 <!-- ESPFRAME:SETTINGS_TABLE frequency END -->
 

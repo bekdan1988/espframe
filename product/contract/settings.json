@@ -134,7 +134,7 @@
     },
     "default": "15 seconds",
     "docs_label": "Slideshow Interval",
-    "docs_description": "How long each photo is shown before advancing (10 seconds to 10 minutes).",
+    "docs_description": "How long each photo is shown before advancing (10 seconds to 24 hours).",
     "firmware_initial_option": "${immich_slide_interval}",
     "options": [
       "10 seconds",
@@ -146,7 +146,15 @@
       "2 minutes",
       "3 minutes",
       "5 minutes",
-      "10 minutes"
+      "10 minutes",
+      "15 minutes",
+      "30 minutes",
+      "1 hour",
+      "2 hours",
+      "4 hours",
+      "8 hours",
+      "16 hours",
+      "24 hours"
     ],
     "firmware_files": [
       "devices/guition-esp32-p4-jc8012p4a1/device/screen_slideshow.yaml"
@@ -614,6 +622,45 @@
     "docs_label": "Portrait Pairing",
     "docs_default": "On",
     "docs_description": "Pairs compatible portrait photos side-by-side on landscape screens.",
+    "firmware_files": [
+      "common/addon/immich_slideshow.yaml"
+    ],
+    "docs_files": [
+      "docs/photo-sources.md"
+    ]
+  },
+  {
+    "key": "portrait_pairing_range",
+    "entity": {
+      "domain": "select",
+      "name": "Photos: Portrait Pairing Range"
+    },
+    "default": "Same Day",
+    "docs_label": "Pairing Range",
+    "docs_default": "Same Day",
+    "docs_description": "Choose whether portrait companions can be taken on the same day or up to one or two calendar days either side.",
+    "options": [
+      "Same Day",
+      "Within 1 Day",
+      "Within 2 Days"
+    ],
+    "firmware_files": [
+      "common/addon/immich_slideshow.yaml"
+    ],
+    "docs_files": [
+      "docs/photo-sources.md"
+    ]
+  },
+  {
+    "key": "portrait_pairs_only",
+    "entity": {
+      "domain": "switch",
+      "name": "Photos: Paired Portraits Only"
+    },
+    "default": false,
+    "docs_label": "Paired Portraits Only",
+    "docs_default": "Off",
+    "docs_description": "Skip portrait photos unless both images in a compatible pair are ready; landscape photos are unaffected.",
     "firmware_files": [
       "common/addon/immich_slideshow.yaml"
     ],
