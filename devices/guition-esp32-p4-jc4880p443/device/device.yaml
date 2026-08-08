@@ -25,6 +25,7 @@ esp32:
       CONFIG_HTTPD_MAX_REQ_HDR_LEN: "8192"
       CONFIG_HTTPD_MAX_URI_LEN: "128"
       CONFIG_ESP_TASK_WDT_TIMEOUT_S: "30"
+      CONFIG_ESP_TLS_CLIENT_SESSION_TICKETS: n
     advanced:
       enable_idf_experimental_features: true
 
