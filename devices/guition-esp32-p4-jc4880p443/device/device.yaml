@@ -26,6 +26,8 @@ esp32:
       CONFIG_HTTPD_MAX_URI_LEN: "128"
       CONFIG_ESP_TASK_WDT_TIMEOUT_S: "30"
       CONFIG_ESP_TLS_CLIENT_SESSION_TICKETS: n
+      CONFIG_MBEDTLS_SSL_VARIABLE_BUFFER_LENGTH: y
+      CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN: 16384
     advanced:
       enable_idf_experimental_features: true
 
