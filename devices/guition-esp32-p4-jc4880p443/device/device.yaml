@@ -29,6 +29,8 @@ esp32:
       # TLS 1.2 so HTTPS photo downloads work with those servers.
       CONFIG_MBEDTLS_SSL_PROTO_TLS1_3: "y"
       CONFIG_MBEDTLS_DEBUG: "y"
+      CONFIG_MBEDTLS_DEBUG_LEVEL: "3"
+      CONFIG_LOG_DEFAULT_LEVEL_DEBUG: "y"
     advanced:
       enable_idf_experimental_features: true
 
