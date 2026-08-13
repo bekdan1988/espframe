@@ -162,6 +162,7 @@ esp_ldo:
   - channel: 3
     id: dsi_phy_enable
     voltage: 2.5V
+    adjustable: true
 
 output:
   - platform: ledc
