@@ -172,8 +172,10 @@ i2c:
   - id: i2c_bus_a
     sda: GPIO7
     scl: GPIO8
-    scan: false
+    scan: true
     frequency: 400kHz
+    sda_pullup_enabled: false
+    scl_pullup_enabled: false
 
 # -----------------------------------------------------------------------------
 # MIPI DSI display (JC4880P443, 480×800, rotation 90)
