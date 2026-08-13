@@ -187,6 +187,7 @@ display:
     id: tft_display
     auto_clear_enabled: false
     update_interval: never
+    byte_order: little_endian
     dimensions:
       width: 480
       height: 800
