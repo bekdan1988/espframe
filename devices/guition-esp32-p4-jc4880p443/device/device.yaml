@@ -167,10 +167,6 @@ output:
   - platform: ledc
     id: backlight_output
     pin: GPIO23
-    frequency: 100Hz
-    inverted: false
-    min_power: 0.0
-    max_power: 0.8
 
 i2c:
   - id: i2c_bus_a
