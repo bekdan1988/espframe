@@ -21,6 +21,9 @@ globals:
   - id: last_short_tap_ms
     type: uint32_t
     initial_value: '0'
+  - id: slideshow_swipe_suppress_tap_until_ms
+    type: uint32_t
+    initial_value: '0'
   - id: last_photo_displayed_ms
     type: uint32_t
     initial_value: '0'
@@ -163,13 +166,17 @@ switch:
 # -----------------------------------------------------------------------------
 # 3-slot full-size ring buffer and portrait pair / preload remote_image components
 # -----------------------------------------------------------------------------
+# Immich can serve previews in a server-configured format. Keep automatic
+# response detection enabled so non-JPEG data is rejected safely instead of
+# being passed to the JPEG decoder. WebP remains disabled on P4 because its
+# software decoder is not stable alongside this display workload.
 remote_image:
   - id: immich_img_0
     url: "${immich_image_initial_url}"
     resize: ${display_width}x${display_height}
     type: RGB565
     byte_order: little_endian
-    formats: [JPEG, WEBP]
+    formats: [JPEG]
     request_headers:
       x-api-key: !lambda 'return id(immich_api_key_text).state;'
     on_download_finished:
@@ -197,7 +204,7 @@ remote_image:
     resize: ${display_width}x${display_height}
     type: RGB565
     byte_order: little_endian
-    formats: [JPEG, WEBP]
+    formats: [JPEG]
     request_headers:
       x-api-key: !lambda 'return id(immich_api_key_text).state;'
     on_download_finished:
@@ -225,7 +232,7 @@ remote_image:
     resize: ${display_width}x${display_height}
     type: RGB565
     byte_order: little_endian
-    formats: [JPEG, WEBP]
+    formats: [JPEG]
     request_headers:
       x-api-key: !lambda 'return id(immich_api_key_text).state;'
     on_download_finished:
@@ -256,7 +263,7 @@ remote_image:
     horizontal_align: END
     type: RGB565
     byte_order: little_endian
-    formats: [JPEG, WEBP]
+    formats: [JPEG]
     request_headers:
       x-api-key: !lambda 'return id(immich_api_key_text).state;'
     on_download_finished:
@@ -281,7 +288,7 @@ remote_image:
     horizontal_align: START
     type: RGB565
     byte_order: little_endian
-    formats: [JPEG, WEBP]
+    formats: [JPEG]
     request_headers:
       x-api-key: !lambda 'return id(immich_api_key_text).state;'
     on_download_finished:
@@ -307,7 +314,7 @@ remote_image:
     horizontal_align: END
     type: RGB565
     byte_order: little_endian
-    formats: [JPEG, WEBP]
+    formats: [JPEG]
     request_headers:
       x-api-key: !lambda 'return id(immich_api_key_text).state;'
     on_download_finished:
@@ -339,7 +346,7 @@ remote_image:
     horizontal_align: START
     type: RGB565
     byte_order: little_endian
-    formats: [JPEG, WEBP]
+    formats: [JPEG]
     request_headers:
       x-api-key: !lambda 'return id(immich_api_key_text).state;'
     on_download_finished:
@@ -581,6 +588,10 @@ script:
     mode: single
     then:
       - lambda: |-
+          // Source selection moved to the composable web/HA filter. Keep the
+          // script ID temporarily so older device touch YAML still compiles,
+          // but deliberately make the obsolete gesture a no-op.
+          return;
           if (!id(developer_features_enabled).state) return;
           if (lv_scr_act() != id(slideshow_page)->obj) return;
           id(backlight_hold_timer).stop();

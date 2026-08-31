@@ -276,6 +276,29 @@ lvgl:
                               text_color: 0xFFFFFF
                               text_font: noto_400_28_font
         - obj:
+            id: slideshow_navigation_feedback
+            align: RIGHT_MID
+            x: -36
+            width: 230
+            height: 82
+            radius: 41
+            bg_color: 0x000000
+            bg_opa: 65%
+            border_width: 2
+            border_color: 0xFFFFFF
+            border_opa: 35%
+            pad_all: 0
+            scrollable: false
+            clickable: false
+            hidden: true
+            widgets:
+              - label:
+                  id: slideshow_navigation_feedback_label
+                  align: CENTER
+                  text: "Next  >"
+                  text_color: 0xFFFFFF
+                  text_font: noto_400_30_font
+        - obj:
             id: connection_failed_overlay
             align: CENTER
             width: ${display_width}
@@ -300,7 +323,7 @@ lvgl:
               - obj:
                   id: connection_failed_content
                   align: center
-                  width: 700
+                  width: 1100
                   height: SIZE_CONTENT
                   bg_opa: 0%
                   border_width: 0
@@ -327,10 +350,38 @@ lvgl:
                     - label:
                         id: connection_failed_subtitle
                         text: "Check your internet connection and\nthe health of your Immich server."
-                        width: 700
+                        width: 1100
                         text_font: noto_400_30_font
                         text_color: 0x888888
                         text_align: center
+                    - obj:
+                        id: photo_source_show_all_button
+                        width: 320
+                        height: 68
+                        radius: 12
+                        bg_color: 0xFFD166
+                        bg_opa: 100%
+                        border_width: 0
+                        pad_all: 0
+                        scrollable: false
+                        clickable: true
+                        hidden: true
+                        on_click:
+                          then:
+                            - script.stop: immich_retry_config_ready
+                            - script.execute: hide_photo_source_empty_state
+                            - lambda: |-
+                                if (id(photo_source_select).current_option() == "All Photos") return;
+                                id(espframe_core).slideshow().clear_commands();
+                                auto call = id(photo_source_select).make_call();
+                                call.set_option("All Photos");
+                                call.perform();
+                        widgets:
+                          - label:
+                              align: CENTER
+                              text: "Show all photos"
+                              text_font: noto_400_30_font
+                              text_color: 0x1A1A1A
         - obj:
             id: photo_source_menu_overlay
             align: CENTER
@@ -501,6 +552,24 @@ lvgl:
 # =============================================================================
 
 script:
+  - id: show_slideshow_navigation_feedback
+    mode: restart
+    parameters:
+      direction: int
+    then:
+      - lambda: |-
+          if (direction > 0) {
+            lv_label_set_text(id(slideshow_navigation_feedback_label), "Next  >");
+            lv_obj_align(id(slideshow_navigation_feedback), LV_ALIGN_RIGHT_MID, -36, 0);
+          } else {
+            lv_label_set_text(id(slideshow_navigation_feedback_label), "<  Previous");
+            lv_obj_align(id(slideshow_navigation_feedback), LV_ALIGN_LEFT_MID, 36, 0);
+          }
+          lv_obj_clear_flag(id(slideshow_navigation_feedback), LV_OBJ_FLAG_HIDDEN);
+      - delay: 650ms
+      - lambda: |-
+          lv_obj_add_flag(id(slideshow_navigation_feedback), LV_OBJ_FLAG_HIDDEN);
+
   - id: slideshow_on_press
     mode: single
     then:
@@ -518,7 +587,10 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return !id(touch_started_while_off);'
+            lambda: |-
+              return !id(touch_started_while_off) &&
+                     (id(slideshow_swipe_suppress_tap_until_ms) == 0 ||
+                      (int32_t) (millis() - id(slideshow_swipe_suppress_tap_until_ms)) >= 0);
           then:
             - lambda: |-
                 uint32_t now = millis();
@@ -547,6 +619,7 @@ script:
             lv_obj_align(id(connection_failed_content), LV_ALIGN_CENTER, 0, 0);
             id(backlight_apply_brightness).execute();
           }
+          lv_obj_add_flag(id(photo_source_show_all_button), LV_OBJ_FLAG_HIDDEN);
           lv_obj_add_flag(id(connection_failed_overlay), LV_OBJ_FLAG_HIDDEN);
           id(last_photo_displayed_ms) = millis();
           id(immich_request_state).clear_failures();
@@ -769,6 +842,8 @@ interval:
             - lambda: |-
                 if (lv_obj_has_flag(id(connection_failed_overlay), LV_OBJ_FLAG_HIDDEN)) {
                   ESP_LOGE("immich", "No photo displayed for %s, showing connection failed screen", id(connection_timeout).current_option().c_str());
+                  id(immich_source_setup_visible) = false;
+                  lv_obj_add_flag(id(photo_source_show_all_button), LV_OBJ_FLAG_HIDDEN);
                   if (id(immich_request_state).last_http_status == 401) {
                     lv_label_set_text(id(connection_failed_title), "Invalid API Key");
                     lv_label_set_text(id(connection_failed_subtitle), "Check your Immich API key in\nthe espframe settings.");

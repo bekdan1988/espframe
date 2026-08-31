@@ -59,11 +59,13 @@ struct PhotoMeta {
 struct SlotMeta : PhotoMeta {
   // Runtime state for one slot in the 3-image ring buffer.
   std::string datetime, companion_url, pending_asset_id;
+  std::string filter_album_ids, filter_person_ids, filter_tag_ids;
   bool ready = false, is_portrait = false;
 };
 
 struct DisplayMeta : PhotoMeta {
   std::string datetime, companion_url;
+  std::string filter_album_ids, filter_person_ids, filter_tag_ids;
   bool is_portrait = false;
   bool valid = false;
 };
@@ -198,16 +200,22 @@ inline void log_immich_pipeline_diag(const char *reason, uint32_t now_ms, uint32
 
   size_t free_heap = heap_caps_get_free_size(MALLOC_CAP_8BIT);
   size_t largest_heap = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+  size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
+  size_t largest_internal = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
+  size_t free_psram = heap_caps_get_free_size(MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM);
+  size_t largest_psram = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM);
   uint32_t cooldown_left = (retry_cooldown_until_ms != 0 && now_ms < retry_cooldown_until_ms)
                                ? (retry_cooldown_until_ms - now_ms)
                                : 0;
 
   ESP_LOGW("diag",
-           "IMMICH-DIAG %s heap=%u largest=%u active=%d target=%d displayed=%d "
+           "IMMICH-DIAG %s heap=%u/%u internal=%u/%u psram=%u/%u active=%d target=%d displayed=%d "
            "slot_flight=%d%d%d nc=%d preload_nc=%d portrait_busy=%d left_req=%d "
            "left_ready=%d right_req=%d right_ready=%d companion=%d pair=%d "
            "preload_slot=%d preload_ready=%d/%d companion_slot=%d retries=%d/%d cooldown=%u",
-           reason, (unsigned) free_heap, (unsigned) largest_heap, active_slot, target_slot,
+           reason, (unsigned) free_heap, (unsigned) largest_heap,
+           (unsigned) free_internal, (unsigned) largest_internal,
+           (unsigned) free_psram, (unsigned) largest_psram, active_slot, target_slot,
            active_displayed, flags.fetch_in_flight[0], flags.fetch_in_flight[1],
            flags.fetch_in_flight[2], nc_count, preload_nc_in_flight, portrait.workflow_busy,
            portrait.left_requested, portrait.left_ready, portrait.right_requested,
@@ -233,6 +241,9 @@ inline void copy_slot_to_display(const SlotMeta &slot, DisplayMeta &disp) {
   static_cast<PhotoMeta&>(disp) = static_cast<const PhotoMeta&>(slot);
   disp.datetime = slot.datetime;
   disp.companion_url = slot.companion_url;
+  disp.filter_album_ids = slot.filter_album_ids;
+  disp.filter_person_ids = slot.filter_person_ids;
+  disp.filter_tag_ids = slot.filter_tag_ids;
   disp.is_portrait = slot.is_portrait;
 }
 
@@ -240,6 +251,9 @@ inline void copy_display_to_slot(const DisplayMeta &disp, SlotMeta &slot) {
   static_cast<PhotoMeta&>(slot) = static_cast<const PhotoMeta&>(disp);
   slot.datetime = disp.datetime;
   slot.companion_url = disp.companion_url;
+  slot.filter_album_ids = disp.filter_album_ids;
+  slot.filter_person_ids = disp.filter_person_ids;
+  slot.filter_tag_ids = disp.filter_tag_ids;
   slot.is_portrait = disp.is_portrait;
 }
 
@@ -488,9 +502,30 @@ inline void fill_slot_from_immich_meta(const ImmichAssetMeta &tmp,
   meta->day = tmp.day;
   meta->zoom = tmp.zoom;
   meta->datetime = tmp.datetime;
+  meta->filter_album_ids = tmp.filter_album_ids;
+  meta->filter_person_ids = tmp.filter_person_ids;
+  meta->filter_tag_ids = tmp.filter_tag_ids;
   meta->companion_url = "";
   meta->pending_asset_id = tmp.asset_id;
   meta->is_portrait = tmp.is_portrait;
+}
+
+inline std::string take_immich_candidate_and_fill_slot(
+    std::vector<ImmichAssetMeta> &pool, int slot,
+    SlotMeta &s0, SlotMeta &s1, SlotMeta &s2) {
+  while (!pool.empty()) {
+    ImmichAssetMeta candidate = std::move(pool.back());
+    pool.pop_back();
+    if (candidate.asset_id.empty()) continue;
+    if (candidate.asset_id == s0.asset_id || candidate.asset_id == s1.asset_id ||
+        candidate.asset_id == s2.asset_id || candidate.asset_id == s0.pending_asset_id ||
+        candidate.asset_id == s1.pending_asset_id || candidate.asset_id == s2.pending_asset_id) {
+      continue;
+    }
+    fill_slot_from_immich_meta(candidate, slot, s0, s1, s2);
+    return candidate.image_url;
+  }
+  return "";
 }
 
 inline std::string parse_immich_asset_and_fill_slot(const std::string &body,
