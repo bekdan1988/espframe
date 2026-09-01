@@ -15,6 +15,8 @@ font:
       - "\U000F05A9"  # mdi-wifi
       - "\U000F0493"  # mdi-cog
       - "\U000F0164"  # mdi-cloud-off-outline
+      - "\U000F0141"  # mdi-chevron-left
+      - "\U000F0142"  # mdi-chevron-right
 
 # -----------------------------------------------------------------------------
 # Substitutions for use in labels/buttons (mdi-wifi, mdi-cog, mdi-cloud-off-outline)
@@ -23,3 +25,5 @@ substitutions:
   icon_wifi: "\U000F05A9"
   icon_cog: "\U000F0493"
   icon_cloud_off: "\U000F0164"
+  icon_chevron_left: "\U000F0141"
+  icon_chevron_right: "\U000F0142"
