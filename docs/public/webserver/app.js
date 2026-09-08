@@ -2164,7 +2164,6 @@ to {
   var rendered = false;
   var renderTimer = null;
   var renderAttemptInFlight = false;
-  var initialSettingsRefreshStarted = false;
   var logListenerAttached = false;
   var ANSI_LEVEL = {
     "1;31": "sp-log-error",
@@ -2320,7 +2319,8 @@ to {
     });
   }
   function fetchLegacyDeviceSettingsState() {
-    var urls = INITIAL_FETCH_KEYS.map(function(k) {
+    var legacyKeys = ["immich_url", "api_key"].concat(INITIAL_FETCH_KEYS);
+    var urls = legacyKeys.map(function(k) {
       if (!endpoints[k]) {
         console.error("Missing endpoint for startup setting:", k);
         return Promise.resolve(null);
@@ -2332,12 +2332,27 @@ to {
         var data = res[i];
         if (!data) continue;
         applyEntityToState({
-          id: KEY_TO_ENTITY_ID[INITIAL_FETCH_KEYS[i]],
+          id: getEntityIdForStateKey(legacyKeys[i]),
           value: data.value,
           state: data.state,
           option: data.option
         });
       }
+    });
+  }
+  function withStartupTimeout(promise, timeoutMs) {
+    var timeoutId;
+    var timeout = new Promise(function(_, reject) {
+      timeoutId = setTimeout(function() {
+        reject(new Error("startup_settings_timeout"));
+      }, timeoutMs);
+    });
+    return Promise.race([promise, timeout]).then(function(value) {
+      clearTimeout(timeoutId);
+      return value;
+    }, function(error) {
+      clearTimeout(timeoutId);
+      throw error;
     });
   }
   function isEditingSetting() {
@@ -2364,14 +2379,6 @@ to {
     deferredRenderControl = active;
     active.addEventListener("blur", resumeSettingsRenderAfterBlur, { once: true });
   }
-  function renderConfiguredSettingsPage() {
-    renderSettings();
-    if (initialSettingsRefreshStarted) return;
-    initialSettingsRefreshStarted = true;
-    fetchDeviceSettingsState().then(function() {
-      if (rendered && !isEditingSetting()) renderSettings();
-    });
-  }
   function scheduleTryRender(delayMs2) {
     if (rendered || renderAttemptInFlight || renderTimer) return;
     renderTimer = setTimeout(function() {
@@ -2382,7 +2389,32 @@ to {
   function showConfiguredSettings() {
     rendered = true;
     renderAttemptInFlight = false;
-    renderConfiguredSettingsPage();
+    renderSettings();
+  }
+  var startupHydrationPromise = null;
+  function getStartupHydration() {
+    if (startupHydrationPromise) return startupHydrationPromise;
+    var hydration = fetchDeviceSettingsState();
+    startupHydrationPromise = hydration;
+    hydration.then(function() {
+      if (startupHydrationPromise === hydration) startupHydrationPromise = null;
+      renderAttemptInFlight = false;
+      if (!rendered) {
+        if (S.immich_url) {
+          showConfiguredSettings();
+        } else {
+          rendered = true;
+          renderWizard();
+        }
+      } else if (S.immich_url) {
+        renderSettingsAfterEditing();
+      }
+    }, function() {
+      if (startupHydrationPromise === hydration) startupHydrationPromise = null;
+      renderAttemptInFlight = false;
+      if (!rendered && !S.immich_url) scheduleTryRender(1e3);
+    });
+    return hydration;
   }
   function tryRender() {
     if (rendered || renderAttemptInFlight) return;
@@ -2390,25 +2422,11 @@ to {
       clearTimeout(renderTimer);
       renderTimer = null;
     }
-    if (S.immich_url) {
-      showConfiguredSettings();
-      return;
-    }
     renderAttemptInFlight = true;
-    getConfigurationSnapshot().then(function(snapshot) {
-      applyConfigurationSnapshot(snapshot);
-      return null;
-    }).catch(function(error) {
-      if (!isConfigurationApiUnavailable(error)) throw error;
-      return Promise.all([
-        safeGet(endpoints.immich_url),
-        safeGet(endpoints.api_key)
-      ]);
-    }).then(function(res) {
+    var hydration = getStartupHydration();
+    withStartupTimeout(hydration, 4e3).then(function() {
       renderAttemptInFlight = false;
       if (rendered) return;
-      if (res && res[0]) settingSaves.receive("immich_url", normalizeImmichUrl(res[0].value || res[0].state || ""));
-      if (res && res[1]) settingSaves.receive("api_key", res[1].value || res[1].state || "");
       if (S.immich_url) {
         showConfiguredSettings();
       } else {
@@ -2417,7 +2435,8 @@ to {
       }
     }).catch(function() {
       renderAttemptInFlight = false;
-      scheduleTryRender(1e3);
+      if (S.immich_url) showConfiguredSettings();
+      else scheduleTryRender(1e3);
     });
   }
   function initSSE() {
@@ -2427,13 +2446,17 @@ to {
         try {
           var d = JSON.parse(e.data);
           if (d && d.name_id) d.id = d.name_id;
+          var spec = d && ENTITY_STATE_MAP[d.id];
+          var previousValue = spec ? S[spec.key] : void 0;
+          var previousOptions = spec && spec.optionsKey ? JSON.stringify(S[spec.optionsKey]) : "";
+          var previousDateTakenFormat = spec && spec.key === "photo_metadata_date_format" ? S.photo_metadata_date_taken_format : void 0;
           collectState(d);
-          if (rendered) handleLiveEvent(d);
+          var changed = !spec || previousValue !== S[spec.key] || spec.optionsKey && previousOptions !== JSON.stringify(S[spec.optionsKey]) || spec.key === "photo_metadata_date_format" && previousDateTakenFormat !== S.photo_metadata_date_taken_format;
+          if (rendered && changed) handleLiveEvent(d);
         } catch (_) {
         }
         if (!rendered) {
-          if (S.immich_url) showConfiguredSettings();
-          else scheduleTryRender(250);
+          scheduleTryRender(250);
         }
       });
       if (!logListenerAttached) {
@@ -4130,8 +4153,8 @@ to {
   function renderSettings() {
     app.replaceChildren();
     immichApp.replaceChildren();
-    var immichWrap = el("div", "fade-in");
-    var wrap = el("div", "fade-in");
+    var immichWrap = el("div");
+    var wrap = el("div");
     var immichCards = renderSettingsCardsForTab("immich");
     var settingsCardEntries = renderSettingsCardEntriesForTab("settings");
     if (!immichCards.length) immichCards = [

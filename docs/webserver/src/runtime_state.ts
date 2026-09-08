@@ -2,7 +2,6 @@
   var rendered = false;
   var renderTimer = null;
   var renderAttemptInFlight = false;
-  var initialSettingsRefreshStarted = false;
   var logListenerAttached = false;
 
   var ANSI_LEVEL = {
@@ -182,7 +181,11 @@
   }
 
   function fetchLegacyDeviceSettingsState() {
-    var urls = INITIAL_FETCH_KEYS.map(function (k) {
+    // The configuration API's key list intentionally omits connection secrets.
+    // Legacy devices still need these two reads to distinguish setup from an
+    // already-configured frame when SSE is unavailable.
+    var legacyKeys = ["immich_url", "api_key"].concat(INITIAL_FETCH_KEYS);
+    var urls = legacyKeys.map(function (k) {
       if (!endpoints[k]) {
         console.error("Missing endpoint for startup setting:", k);
         return Promise.resolve(null);
@@ -194,12 +197,26 @@
         var data = res[i];
         if (!data) continue;
         applyEntityToState({
-          id: KEY_TO_ENTITY_ID[INITIAL_FETCH_KEYS[i]],
+          id: getEntityIdForStateKey(legacyKeys[i]),
           value: data.value,
           state: data.state,
           option: data.option
         });
       }
+    });
+  }
+
+  function withStartupTimeout(promise, timeoutMs) {
+    var timeoutId;
+    var timeout = new Promise(function (_, reject) {
+      timeoutId = setTimeout(function () { reject(new Error("startup_settings_timeout")); }, timeoutMs);
+    });
+    return Promise.race([promise, timeout]).then(function (value) {
+      clearTimeout(timeoutId);
+      return value;
+    }, function (error) {
+      clearTimeout(timeoutId);
+      throw error;
     });
   }
 
@@ -233,19 +250,6 @@
     active.addEventListener("blur", resumeSettingsRenderAfterBlur, { once: true });
   }
 
-  function renderConfiguredSettingsPage() {
-    renderSettings();
-
-    if (initialSettingsRefreshStarted) return;
-    initialSettingsRefreshStarted = true;
-
-    // Draw the cards first. The ESP webserver can take a while to answer every
-    // per-entity request, so hydrate the values in the background.
-    fetchDeviceSettingsState().then(function () {
-      if (rendered && !isEditingSetting()) renderSettings();
-    });
-  }
-
   function scheduleTryRender(delayMs) {
     if (rendered || renderAttemptInFlight || renderTimer) return;
     renderTimer = setTimeout(function () {
@@ -257,7 +261,34 @@
   function showConfiguredSettings() {
     rendered = true;
     renderAttemptInFlight = false;
-    renderConfiguredSettingsPage();
+    renderSettings();
+  }
+
+  var startupHydrationPromise = null;
+
+  function getStartupHydration() {
+    if (startupHydrationPromise) return startupHydrationPromise;
+    var hydration = fetchDeviceSettingsState();
+    startupHydrationPromise = hydration;
+    hydration.then(function () {
+      if (startupHydrationPromise === hydration) startupHydrationPromise = null;
+      renderAttemptInFlight = false;
+      if (!rendered) {
+        if (S.immich_url) {
+          showConfiguredSettings();
+        } else {
+          rendered = true;
+          renderWizard();
+        }
+      } else if (S.immich_url) {
+        renderSettingsAfterEditing();
+      }
+    }, function () {
+      if (startupHydrationPromise === hydration) startupHydrationPromise = null;
+      renderAttemptInFlight = false;
+      if (!rendered && !S.immich_url) scheduleTryRender(1000);
+    });
+    return hydration;
   }
 
   function tryRender() {
@@ -266,25 +297,13 @@
       clearTimeout(renderTimer);
       renderTimer = null;
     }
-    if (S.immich_url) {
-      showConfiguredSettings();
-      return;
-    }
     renderAttemptInFlight = true;
-    getConfigurationSnapshot().then(function (snapshot) {
-      applyConfigurationSnapshot(snapshot);
-      return null;
-    }).catch(function (error) {
-      if (!isConfigurationApiUnavailable(error)) throw error;
-      return Promise.all([
-        safeGet(endpoints.immich_url),
-        safeGet(endpoints.api_key)
-      ]);
-    }).then(function (res) {
+    // Wait for the complete snapshot (or legacy settings) before showing cards.
+    // SSE can deliver the connection URL long before the remaining settings.
+    var hydration = getStartupHydration();
+    withStartupTimeout(hydration, 4000).then(function () {
       renderAttemptInFlight = false;
       if (rendered) return;
-      if (res && res[0]) settingSaves.receive("immich_url", normalizeImmichUrl(res[0].value || res[0].state || ""));
-      if (res && res[1]) settingSaves.receive("api_key", res[1].value || res[1].state || "");
       if (S.immich_url) {
         showConfiguredSettings();
       } else {
@@ -293,7 +312,8 @@
       }
     }).catch(function () {
       renderAttemptInFlight = false;
-      scheduleTryRender(1000);
+      if (S.immich_url) showConfiguredSettings();
+      else scheduleTryRender(1000);
     });
   }
 
@@ -310,13 +330,21 @@
           // 2026.8.0 drops name_id and switches id to the name form, so preferring
           // name_id and otherwise leaving id alone is correct either side of that.
           if (d && d.name_id) d.id = d.name_id;
+          var spec = d && ENTITY_STATE_MAP[d.id];
+          var previousValue = spec ? S[spec.key] : undefined;
+          var previousOptions = spec && spec.optionsKey ? JSON.stringify(S[spec.optionsKey]) : "";
+          var previousDateTakenFormat = spec && spec.key === "photo_metadata_date_format"
+            ? S.photo_metadata_date_taken_format : undefined;
           collectState(d);
-          if (rendered) handleLiveEvent(d);
+          var changed = !spec || previousValue !== S[spec.key] ||
+            (spec.optionsKey && previousOptions !== JSON.stringify(S[spec.optionsKey])) ||
+            (spec.key === "photo_metadata_date_format" &&
+              previousDateTakenFormat !== S.photo_metadata_date_taken_format);
+          if (rendered && changed) handleLiveEvent(d);
         } catch (_) {}
 
         if (!rendered) {
-          if (S.immich_url) showConfiguredSettings();
-          else scheduleTryRender(250);
+          scheduleTryRender(250);
         }
       });
 
