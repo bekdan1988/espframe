@@ -38,6 +38,9 @@
       photos.albums_enabled = source === "Album";
       photos.people_enabled = source === "Person";
       photos.tags_enabled = source === "Tag";
+      photos.favorites_enabled = source === "Favorites";
+      photos.rating_enabled = false;
+      photos.location_enabled = false;
       photos.inclusion_matching = "Match all enabled groups";
       photos.album_matching = "Any selected album";
       photos.person_matching = "Any selected person";
@@ -55,10 +58,32 @@
       // Keep the deprecated value for the one import write so firmware can
       // raise the one-time migration notice before converting it to All Photos.
       photos.source = source;
-      migrated.version = 2;
+      migrated.version = 3;
       return migrated;
     },
     2: function backupConfigVersion2(data) {
+      var migrated = JSON.parse(JSON.stringify(data));
+      var photos = migrated.photos;
+      if (photos) {
+        [["albums_enabled", "excluded_album_ids"], ["people_enabled", "excluded_person_ids"],
+          ["tags_enabled", "excluded_tag_ids"]].forEach(function (group) {
+          if (String(photos[group[1]] || "").trim()) photos[group[0]] = true;
+        });
+        if (!Object.prototype.hasOwnProperty.call(photos, "favorites_enabled")) {
+          photos.favorites_enabled = photos.favorite_mode && photos.favorite_mode !== "Any";
+        }
+        if (!Object.prototype.hasOwnProperty.call(photos, "rating_enabled")) {
+          photos.rating_enabled = photos.minimum_rating && photos.minimum_rating !== "Any";
+        }
+        if (!Object.prototype.hasOwnProperty.call(photos, "location_enabled")) {
+          photos.location_enabled = !!(String(photos.country || "").trim() ||
+            String(photos.state || "").trim() || String(photos.city || "").trim());
+        }
+      }
+      migrated.version = 3;
+      return migrated;
+    },
+    3: function backupConfigVersion3(data) {
       return data;
     }
   };
@@ -149,7 +174,7 @@
     return backupEntryKey(entry).replace(/_/g, " ");
   }
 
-  function backupImportValidation(ok, value, message) {
+  function backupImportValidation(ok, value, message?) {
     return { ok: ok, value: value, message: message || "" };
   }
 
@@ -379,7 +404,7 @@
       var reader = new FileReader();
       reader.onload = function () {
         var data;
-        try { data = JSON.parse(reader.result); } catch (_) {
+        try { data = JSON.parse(String(reader.result)); } catch (_) {
           showBanner("Invalid file \u2014 could not parse JSON", "error");
           return;
         }

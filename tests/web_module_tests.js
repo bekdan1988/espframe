@@ -46,7 +46,6 @@ const modules = {
   "__ESPFRAME_WEB_SETTINGS_CONTROLS__": "settings_controls.ts",
   "__ESPFRAME_WEB_LIVE_HELPERS__": "live_helpers.ts",
   "__ESPFRAME_WEB_BACKUP_IMPORT__": "backup_import.ts",
-  "__ESPFRAME_WEB_COMPAT_HELPERS__": "compat.ts",
 };
 
 for (const [placeholder, filename] of Object.entries(modules)) {
@@ -72,11 +71,13 @@ assert.ok(
 );
 assert.ok(publicApp.includes("customElements.define"), "public app should register its component root");
 assert.ok(publicApp.includes('"album_order"'), "public app should include album order in photo-source apply keys");
-assert.ok(publicApp.includes("Move album up"), "public app should include album reorder controls");
+assert.ok(publicApp.includes("Move up"), "public app should include album reorder controls");
 assert.ok(publicApp.includes("movePhotoIdRow"), "public app should keep photo ID and label rows reorderable");
 assert.ok(
-  publicApp.includes("All selected albums need 3.2+"),
-  "flat-filter servers should explain why all-album matching is unavailable"
+  publicApp.includes("Requires Immich server version 3.2 or newer") &&
+    publicApp.includes('label: "Filter by "') &&
+    publicApp.includes("Filter by Location"),
+  "photo filters should expose progressive groups and clear compatibility guidance"
 );
 assert.ok(
   publicApp.includes("Choose Any to clear") &&
@@ -86,14 +87,11 @@ assert.ok(
 assert.ok(
   publicApp.includes("disableEditing: !supportsStructured") &&
     publicApp.includes("allowClearLast: !supportsStructured") &&
-    publicApp.includes("saved ones can be removed"),
+    publicApp.includes("Saved exclusions can be removed"),
   "compatibility mode should prevent new exclusions while allowing saved exclusions to be removed"
 );
-assert.ok(
-  publicApp.includes("3.1: Match all + multiple Any people/tags needs 3.2+") &&
-    publicApp.includes('supportsStructured ? "setting-hint" : "banner warning"'),
-  "compatibility mode should clearly flag compound any-of intersections and their recovery options"
-);
+assert.ok(!publicApp.includes("Advanced inclusion options"),
+  "photo filters should not render the removed advanced inclusion panel");
 assert.ok(
   publicApp.includes("if (nextValue && index > 0") &&
     publicApp.includes("S[spec[1]] = nextValue"),
@@ -114,7 +112,7 @@ assert.ok(
   "applying a photo filter should reset any-selected ID retry state"
 );
 assert.ok(
-  filterFlush.includes("previous_display = DisplayMeta{}"),
+  filterFlush.includes("slideshow().invalidate_filter_slots()"),
   "applying a photo filter should invalidate backward-navigation history"
 );
 const statisticsFetch = immichApiSource.slice(
@@ -213,6 +211,17 @@ const legacySourceSelect = immichFilterSource.slice(
   immichFilterSource.indexOf('name: "Photos: Source"'),
   immichFilterSource.indexOf('name: "Photos: Inclusion Groups"')
 );
+const groupMigration = legacyMigration.slice(legacyMigration.indexOf("immich_filter_schema_version) < 2"));
+assert.ok(!groupMigration.includes(".set_option("),
+  "group toggle migration must preserve saved matching modes");
+assert.ok(groupMigration.indexOf("immich_filter_preset_adapter_active) = true") <
+  groupMigration.indexOf(".turn_on()") &&
+  groupMigration.includes("immich_filter_preset_adapter_active) = adapter_active"),
+  "migration must suppress preset callbacks while restoring group toggles");
+["album", "person", "tag"].forEach(function (noun) {
+  assert.ok(groupMigration.includes("immich_excluded_" + noun + "_ids).state.empty()"),
+    "migration must retain exclusion-only " + noun + " filters");
+});
 assert.ok(
   legacyMigration.includes("preserve_tag_matching: true"),
   "legacy schema migration should preserve the restored tag-matching preference"
@@ -244,9 +253,12 @@ assert.ok(
     "legacy photo-source presets should restore " + defaultMode
   );
 });
-const photoSourceApply = publicApp.slice(
-  publicApp.indexOf("function applyPhotoSourceInputs()"),
-  publicApp.indexOf("function schedulePhotoSourceApply")
+// The legacy renderer remains available in authored source; the module bundler
+// omits it from the current UI because makePhotoSourceCard uses the smart filter.
+const immichCardsSource = fs.readFileSync(path.join(root, "docs/webserver/src/settings_immich_cards.ts"), "utf8");
+const photoSourceApply = immichCardsSource.slice(
+  immichCardsSource.indexOf("function applyPhotoSourceInputs()"),
+  immichCardsSource.indexOf("function schedulePhotoSourceApply")
 );
 assert.ok(
   photoSourceApply.indexOf("if (!vals) return;") < photoSourceApply.indexOf("pendingPhotoSourceSave = {"),
@@ -265,7 +277,7 @@ assert.equal(
 assert.ok(publicApp.includes('image.alt = "Buy Me A Coffee"'), "support button image should have accessible text");
 
 const backupImportContext = { JSON };
-require("vm").runInNewContext(backupImportSource, backupImportContext);
+require("vm").runInNewContext(require("esbuild").transformSync(backupImportSource, { loader: "ts" }).code, backupImportContext);
 const connectionOnlyBackup = backupImportContext.migrateBackupConfig({
   version: 1,
   connection: { immich_url: "https://photos.example.com" }
@@ -290,6 +302,31 @@ const legacyAlbumBackup = backupImportContext.migrateBackupConfig({
 });
 assert.equal(legacyAlbumBackup.photos.albums_enabled, true, "legacy Album sources should enable the album group");
 assert.equal(legacyAlbumBackup.photos.source, "Album", "legacy photo sources should remain available to firmware migration");
+const migratedFilterBackup = backupImportContext.migrateBackupConfig({
+  version: 2,
+  photos: { favorite_mode: "Favorites only", minimum_rating: "4+", city: "Wellington" }
+});
+assert.equal(migratedFilterBackup.version, 3, "older filter backups should migrate to version 3");
+assert.equal(migratedFilterBackup.photos.favorites_enabled, true, "saved favorite mode should enable favorite filtering");
+assert.equal(migratedFilterBackup.photos.rating_enabled, true, "saved rating should enable rating filtering");
+assert.equal(migratedFilterBackup.photos.location_enabled, true, "saved location should enable location filtering");
+
+const exclusionBackup = JSON.parse(fs.readFileSync(path.join(root, "tests/fixtures/backup/espframe-config-v2-full.json"), "utf8"));
+["albums", "people", "tags"].forEach(function (group) { exclusionBackup.photos[group + "_enabled"] = false; });
+const restoredExclusions = backupImportContext.migrateBackupConfig(exclusionBackup);
+["albums", "people", "tags"].forEach(function (group) {
+  assert.equal(restoredExclusions.photos[group + "_enabled"], true, "v2 exclusions must enable " + group);
+  assert.equal(exclusionBackup.photos[group + "_enabled"], false, "migration must not mutate its input");
+});
+assert.equal(restoredExclusions.photos.person_matching, exclusionBackup.photos.person_matching);
+const currentExclusions = backupImportContext.migrateBackupConfig({ ...exclusionBackup, version: 3 });
+assert.equal(currentExclusions.photos.tags_enabled, false, "v3 disabled exclusions must stay disabled");
+const emptyExclusions = backupImportContext.migrateBackupConfig({
+  version: 2, photos: { albums_enabled: false, excluded_album_ids: "  ", people_enabled: true }
+});
+assert.equal(emptyExclusions.photos.albums_enabled, false);
+assert.equal(emptyExclusions.photos.people_enabled, true);
+assert.equal(Object.prototype.hasOwnProperty.call(emptyExclusions.photos, "tags_enabled"), false);
 
 // The web server identifies each entity with name_id ("domain/Friendly Name") plus a
 // legacy id ("domain-object_id"). ENTITY_STATE_MAP and the REST endpoints both use the
@@ -307,5 +344,70 @@ assert.ok(
   publicApp.includes("waitForFirmwareUpdateResponse(12)"),
   "firmware checks should wait for the asynchronous device update result instead of reading UNKNOWN once"
 );
+
+// Exercise production disclosure helpers with bubbling clicks so header clicks
+// and native button activation cannot diverge or toggle a card twice.
+function disclosureElement(tagName, className = "") {
+  const classes = new Set(className.split(" ").filter(Boolean));
+  const attributes = new Map();
+  return {
+    tagName: tagName.toUpperCase(),
+    children: [],
+    classList: {
+      add: (name) => classes.add(name),
+      contains: (name) => classes.has(name),
+      toggle(name) {
+        if (classes.has(name)) classes.delete(name);
+        else classes.add(name);
+      },
+    },
+    appendChild(child) {
+      child.parentElement = this;
+      this.children.push(child);
+    },
+    setAttribute: (name, value) => attributes.set(name, String(value)),
+    getAttribute: (name) => attributes.get(name) ?? null,
+    click() {
+      let stopped = false;
+      const event = { stopPropagation() { stopped = true; } };
+      for (let node = this; node && !stopped; node = node.parentElement) {
+        if (node.onclick) node.onclick(event);
+      }
+    },
+  };
+}
+const disclosureContext = {
+  el: disclosureElement,
+  document: { createElement: disclosureElement },
+};
+const disclosureSource = liveHelpersSource.slice(
+  liveHelpersSource.indexOf("  var controlId = 0;"),
+  liveHelpersSource.indexOf("  function makeBackupCard()")
+);
+require("vm").runInNewContext(require("esbuild").transformSync(disclosureSource, { loader: "ts" }).code, disclosureContext);
+const disclosureIds = new Set();
+for (const initiallyCollapsed of [true, false]) {
+  const card = disclosureContext.makeCollapsibleCard("Settings", disclosureElement("div"), initiallyCollapsed);
+  const [header, body] = card.children;
+  const toggle = header.children[0].children[0];
+  const chevron = header.children[1].children[0];
+  assert.equal(toggle.tagName, "BUTTON");
+  assert.equal(toggle.type, "button");
+  assert.ok(body.id, "disclosure content must have an ID");
+  assert.equal(toggle.getAttribute("aria-controls"), body.id);
+  assert.equal(disclosureIds.has(body.id), false, "each card needs its own content ID");
+  disclosureIds.add(body.id);
+  let expanded = !initiallyCollapsed;
+  function assertDisclosureState() {
+    assert.equal(toggle.getAttribute("aria-expanded"), String(expanded));
+    assert.equal(card.classList.contains("collapsed"), !expanded);
+  }
+  assertDisclosureState();
+  for (const target of [toggle, toggle, header, chevron]) {
+    target.click();
+    expanded = !expanded;
+    assertDisclosureState();
+  }
+}
 
 console.log("web module tests passed");

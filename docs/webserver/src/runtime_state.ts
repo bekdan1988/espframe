@@ -2,7 +2,6 @@
   var rendered = false;
   var renderTimer = null;
   var renderAttemptInFlight = false;
-  var initialSettingsRefreshStarted = false;
   var logListenerAttached = false;
 
   var ANSI_LEVEL = {
@@ -14,7 +13,7 @@
     "0;36": "sp-log-debug",
     "0;37": "sp-log-verbose"
   };
-  var ANSI_RE = /\033\[[\d;]*m/g;
+  var ANSI_RE = /\x1b\[[\d;]*m/g;
 
   function appendLog(msg, lvl) {
     if (!els.logOutput) return;
@@ -22,7 +21,7 @@
     line.className = "sp-log-line";
 
     var ansiClass = "";
-    var m = msg.match(/\033\[([\d;]+)m/);
+    var m = msg.match(/\x1b\[([\d;]+)m/);
     if (m) ansiClass = ANSI_LEVEL[m[1]] || "";
 
     if (ansiClass) {
@@ -63,7 +62,7 @@
     Object.keys(STATIC_ENTITIES).forEach(function (key) {
       var staticSpec = STATIC_ENTITIES[key];
       if (!staticSpec || typeof staticSpec.entity !== "string") return;
-      var stateSpec = { key: key };
+      var stateSpec: EntityStateSpec = { key: key };
       if (staticSpec.default !== undefined) stateSpec.default = staticSpec.default;
       if (staticSpec.optionsKey) stateSpec.optionsKey = staticSpec.optionsKey;
       if (staticSpec.boolFromState) stateSpec.boolFromState = true;
@@ -77,7 +76,7 @@
     Object.keys(PRODUCT_SETTINGS).forEach(function (key) {
       var productSpec = PRODUCT_SETTINGS[key];
       if (!productSpec || typeof productSpec.entity !== "string") return;
-      var stateSpec = { key: key, default: productSpec.default };
+      var stateSpec: EntityStateSpec = { key: key, default: productSpec.default };
       if (productSpec.domain === "switch") stateSpec.boolFromState = true;
       if (productSpec.domain === "number") stateSpec.number = true;
       ENTITY_STATE_MAP[productSpec.entity] = stateSpec;
@@ -95,7 +94,7 @@
       if (!Array.isArray(aliases)) return;
       aliases.forEach(function (aliasSpec) {
         if (!aliasSpec || typeof aliasSpec.entity !== "string") return;
-        var stateSpec = { key: key };
+        var stateSpec: EntityStateSpec = { key: key };
         if (aliasSpec.default !== undefined) stateSpec.default = aliasSpec.default;
         if (aliasSpec.optionsKey) stateSpec.optionsKey = aliasSpec.optionsKey;
         if (aliasSpec.boolFromState) stateSpec.boolFromState = true;
@@ -130,24 +129,26 @@
     var spec = ENTITY_STATE_MAP[id];
     if (!spec) return;
     var v = d.value != null ? d.value : d.state;
+    var received;
     if (spec.boolFromState) {
-      S[spec.key] = v === true || v === "ON";
+      received = v === true || v === "ON";
     } else if (spec.number) {
-      S[spec.key] = v != null ? Math.round(Number(v)) : (spec.default !== undefined ? spec.default : 0);
+      received = v != null ? Math.round(Number(v)) : (spec.default !== undefined ? spec.default : 0);
     } else {
-      S[spec.key] = v !== undefined && v !== null ? String(v) : (spec.default !== undefined ? spec.default : "");
+      received = v !== undefined && v !== null ? String(v) : (spec.default !== undefined ? spec.default : "");
     }
-    if (spec.key === "timezone") S[spec.key] = normalizeTimezoneOption(S[spec.key]);
-    if (spec.key && spec.key.indexOf("ntp_server_") === 0) S[spec.key] = normalizeNtpServer(S[spec.key]);
+    if (spec.key === "timezone") received = normalizeTimezoneOption(received);
+    if (spec.key && spec.key.indexOf("ntp_server_") === 0) received = normalizeNtpServer(received);
     if (spec.optionsKey && d.option && d.option.length) S[spec.optionsKey] = d.option;
     if (spec.key === "photo_metadata_date_format" &&
-        S[spec.key] !== "Relative Date" && S[spec.key] !== "Date Taken") {
-      S.photo_metadata_date_taken_format = normalizeDateTakenFormat(S[spec.key]);
-      S[spec.key] = "Date Taken";
+        received !== "Relative Date" && received !== "Date Taken") {
+      settingSaves.receive("photo_metadata_date_taken_format", normalizeDateTakenFormat(received));
+      received = "Date Taken";
     }
     if (spec.key === "photo_metadata_date_taken_format") {
-      S[spec.key] = normalizeDateTakenFormat(S[spec.key]);
+      received = normalizeDateTakenFormat(received);
     }
+    settingSaves.receive(spec.key, received);
   }
 
   function collectState(d) {
@@ -180,7 +181,11 @@
   }
 
   function fetchLegacyDeviceSettingsState() {
-    var urls = INITIAL_FETCH_KEYS.map(function (k) {
+    // The configuration API's key list intentionally omits connection secrets.
+    // Legacy devices still need these two reads to distinguish setup from an
+    // already-configured frame when SSE is unavailable.
+    var legacyKeys = ["immich_url", "api_key"].concat(INITIAL_FETCH_KEYS);
+    var urls = legacyKeys.map(function (k) {
       if (!endpoints[k]) {
         console.error("Missing endpoint for startup setting:", k);
         return Promise.resolve(null);
@@ -192,12 +197,26 @@
         var data = res[i];
         if (!data) continue;
         applyEntityToState({
-          id: KEY_TO_ENTITY_ID[INITIAL_FETCH_KEYS[i]],
+          id: getEntityIdForStateKey(legacyKeys[i]),
           value: data.value,
           state: data.state,
           option: data.option
         });
       }
+    });
+  }
+
+  function withStartupTimeout(promise, timeoutMs) {
+    var timeoutId;
+    var timeout = new Promise(function (_, reject) {
+      timeoutId = setTimeout(function () { reject(new Error("startup_settings_timeout")); }, timeoutMs);
+    });
+    return Promise.race([promise, timeout]).then(function (value) {
+      clearTimeout(timeoutId);
+      return value;
+    }, function (error) {
+      clearTimeout(timeoutId);
+      throw error;
     });
   }
 
@@ -207,26 +226,28 @@
       active.matches("input,select,textarea,button"));
   }
 
-  function renderSettingsAfterEditing() {
-    if (!isEditingSetting()) return renderSettings();
+  var deferredRenderControl = null;
+
+  function resumeSettingsRenderAfterBlur() {
+    deferredRenderControl = null;
     if (renderTimer) return;
+    // Let focus and the next control's click settle before replacing the UI.
     renderTimer = setTimeout(function () {
       renderTimer = null;
       renderSettingsAfterEditing();
-    }, 100);
+    }, 0);
   }
 
-  function renderConfiguredSettingsPage() {
-    renderSettings();
-
-    if (initialSettingsRefreshStarted) return;
-    initialSettingsRefreshStarted = true;
-
-    // Draw the cards first. The ESP webserver can take a while to answer every
-    // per-entity request, so hydrate the values in the background.
-    fetchDeviceSettingsState().then(function () {
-      if (rendered && !isEditingSetting()) renderSettings();
-    });
+  function renderSettingsAfterEditing() {
+    var active = isEditingSetting() ? document.activeElement : null;
+    if (deferredRenderControl && deferredRenderControl !== active) {
+      deferredRenderControl.removeEventListener("blur", resumeSettingsRenderAfterBlur);
+      deferredRenderControl = null;
+    }
+    if (!active) return renderSettings();
+    if (deferredRenderControl === active) return;
+    deferredRenderControl = active;
+    active.addEventListener("blur", resumeSettingsRenderAfterBlur, { once: true });
   }
 
   function scheduleTryRender(delayMs) {
@@ -240,7 +261,34 @@
   function showConfiguredSettings() {
     rendered = true;
     renderAttemptInFlight = false;
-    renderConfiguredSettingsPage();
+    renderSettings();
+  }
+
+  var startupHydrationPromise = null;
+
+  function getStartupHydration() {
+    if (startupHydrationPromise) return startupHydrationPromise;
+    var hydration = fetchDeviceSettingsState();
+    startupHydrationPromise = hydration;
+    hydration.then(function () {
+      if (startupHydrationPromise === hydration) startupHydrationPromise = null;
+      renderAttemptInFlight = false;
+      if (!rendered) {
+        if (S.immich_url) {
+          showConfiguredSettings();
+        } else {
+          rendered = true;
+          renderWizard();
+        }
+      } else if (S.immich_url) {
+        renderSettingsAfterEditing();
+      }
+    }, function () {
+      if (startupHydrationPromise === hydration) startupHydrationPromise = null;
+      renderAttemptInFlight = false;
+      if (!rendered && !S.immich_url) scheduleTryRender(1000);
+    });
+    return hydration;
   }
 
   function tryRender() {
@@ -249,25 +297,13 @@
       clearTimeout(renderTimer);
       renderTimer = null;
     }
-    if (S.immich_url) {
-      showConfiguredSettings();
-      return;
-    }
     renderAttemptInFlight = true;
-    getConfigurationSnapshot().then(function (snapshot) {
-      applyConfigurationSnapshot(snapshot);
-      return null;
-    }).catch(function (error) {
-      if (!isConfigurationApiUnavailable(error)) throw error;
-      return Promise.all([
-        safeGet(endpoints.immich_url),
-        safeGet(endpoints.api_key)
-      ]);
-    }).then(function (res) {
+    // Wait for the complete snapshot (or legacy settings) before showing cards.
+    // SSE can deliver the connection URL long before the remaining settings.
+    var hydration = getStartupHydration();
+    withStartupTimeout(hydration, 4000).then(function () {
       renderAttemptInFlight = false;
       if (rendered) return;
-      if (res && res[0]) S.immich_url = normalizeImmichUrl(res[0].value || res[0].state || "");
-      if (res && res[1]) S.api_key = res[1].value || res[1].state || "";
       if (S.immich_url) {
         showConfiguredSettings();
       } else {
@@ -276,7 +312,8 @@
       }
     }).catch(function () {
       renderAttemptInFlight = false;
-      scheduleTryRender(1000);
+      if (S.immich_url) showConfiguredSettings();
+      else scheduleTryRender(1000);
     });
   }
 
@@ -293,13 +330,21 @@
           // 2026.8.0 drops name_id and switches id to the name form, so preferring
           // name_id and otherwise leaving id alone is correct either side of that.
           if (d && d.name_id) d.id = d.name_id;
+          var spec = d && ENTITY_STATE_MAP[d.id];
+          var previousValue = spec ? S[spec.key] : undefined;
+          var previousOptions = spec && spec.optionsKey ? JSON.stringify(S[spec.optionsKey]) : "";
+          var previousDateTakenFormat = spec && spec.key === "photo_metadata_date_format"
+            ? S.photo_metadata_date_taken_format : undefined;
           collectState(d);
-          if (rendered) handleLiveEvent(d);
+          var changed = !spec || previousValue !== S[spec.key] ||
+            (spec.optionsKey && previousOptions !== JSON.stringify(S[spec.optionsKey])) ||
+            (spec.key === "photo_metadata_date_format" &&
+              previousDateTakenFormat !== S.photo_metadata_date_taken_format);
+          if (rendered && changed) handleLiveEvent(d);
         } catch (_) {}
 
         if (!rendered) {
-          if (S.immich_url) showConfiguredSettings();
-          else scheduleTryRender(250);
+          scheduleTryRender(250);
         }
       });
 

@@ -9,7 +9,7 @@
       makeConnectionCard: makeConnectionCard,
       makeFrequencyCard: makeFrequencyCard,
       makePhotoSourceCard: makePhotoSourceCard,
-      makeAdvancedFiltersCard: makeAdvancedFiltersCard,
+      makePortraitPairingCard: makePortraitPairingCard,
       makeLayoutCard: makeLayoutCard,
       makeMetadataCard: makeMetadataCard,
       makeScreenBrightnessCard: makeScreenBrightnessCard,
@@ -66,16 +66,16 @@
   function renderSettings() {
     app.replaceChildren();
     immichApp.replaceChildren();
-    var immichWrap = el("div", "fade-in");
-    var wrap = el("div", "fade-in");
+    var immichWrap = el("div");
+    var wrap = el("div");
 
     var immichCards = renderSettingsCardsForTab("immich");
     var settingsCardEntries = renderSettingsCardEntriesForTab("settings");
     if (!immichCards.length) immichCards = [
       makeConnectionCard(),
       makeFrequencyCard(),
+      makePortraitPairingCard(),
       makePhotoSourceCard(),
-      makeAdvancedFiltersCard(),
       makeLayoutCard(),
       makeMetadataCard()
     ];
@@ -95,4 +95,6 @@
     ];
     appendSettingsSections(wrap, settingsCardEntries);
     app.appendChild(wrap);
+    connectFieldLabels(app);
+    connectFieldLabels(immichApp);
   }

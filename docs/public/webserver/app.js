@@ -1,8 +1,188 @@
 // ESPFRAME: generated from typed docs/webserver/src and product/contract; run `npm run generate` to update.
-(function() {
-  "use strict";
-  class EspframeAppElement extends HTMLElement {
+"use strict";
+(() => {
+  var __defProp = Object.defineProperty;
+  var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+
+  // docs/webserver/src/setting_save.ts
+  var SettingSaveCoordinator = class {
+    constructor(read, write) {
+      __publicField(this, "read", read);
+      __publicField(this, "write", write);
+      __publicField(this, "sequence", 0);
+      __publicField(this, "queue", Promise.resolve());
+      __publicField(this, "confirmed", /* @__PURE__ */ new Map());
+      __publicField(this, "pending", /* @__PURE__ */ new Map());
+    }
+    receive(key, value) {
+      if (this.pending.has(key)) return;
+      this.confirmed.set(key, value);
+      this.write(key, value);
+    }
+    save(values, send) {
+      const revision = ++this.sequence;
+      const entries = Object.entries(values);
+      for (const [key, value] of entries) {
+        let pending = this.pending.get(key);
+        if (!pending) {
+          pending = { confirmed: this.confirmed.has(key) ? this.confirmed.get(key) : this.read(key), latest: revision, remaining: 0 };
+          this.pending.set(key, pending);
+        }
+        pending.latest = revision;
+        pending.remaining++;
+        this.write(key, value);
+      }
+      const request = this.queue.then(send).then(
+        (result) => {
+          this.finish(entries, revision, true);
+          return result;
+        },
+        (error) => {
+          this.finish(entries, revision, false);
+          throw error;
+        }
+      );
+      this.queue = request.catch(() => void 0);
+      return request;
+    }
+    finish(entries, revision, accepted) {
+      for (const [key, value] of entries) {
+        const pending = this.pending.get(key);
+        if (accepted) {
+          pending.confirmed = value;
+          this.confirmed.set(key, value);
+        }
+        if (pending.latest === revision) this.write(key, pending.confirmed);
+        if (--pending.remaining === 0) this.pending.delete(key);
+      }
+    }
+  };
+
+  // docs/webserver/src/compat.ts
+  var MAX_PHOTO_ID_FIELD_LENGTH = 255;
+  function normalizeNtpServer(value) {
+    return String(value == null ? "" : value).trim();
   }
+  var LEGACY_DATE_TAKEN_FORMATS = {
+    "January 1, 2000": "January 1, 2026",
+    "January 1, 2026": "January 1, 2026",
+    "Month Day, Year": "January 1, 2026",
+    "Month Day Ordinal, Year": "January 1, 2026"
+  };
+  function normalizeDateTakenFormat(value) {
+    return LEGACY_DATE_TAKEN_FORMATS[value] || "1 January, 2026";
+  }
+  function stripUrlTrailingSlashes(value) {
+    var url = String(value == null ? "" : value);
+    while (url.length > 0 && url.charAt(url.length - 1) === "/" && !/^[a-z][a-z0-9+.-]*:\/\/$/i.test(url)) {
+      url = url.slice(0, -1);
+    }
+    return url;
+  }
+  function isValidHttpUrl(value) {
+    try {
+      var url = new URL(value);
+      return (url.protocol === "http:" || url.protocol === "https:") && !!url.hostname;
+    } catch (_) {
+      return false;
+    }
+  }
+  function extractUrlAuthority(value) {
+    var url = String(value || "");
+    if (url.indexOf("//") === 0) url = url.slice(2);
+    return url.split(/[/?#]/)[0] || "";
+  }
+  function extractUrlHost(value) {
+    var authority = extractUrlAuthority(value);
+    var at = authority.lastIndexOf("@");
+    if (at >= 0) authority = authority.slice(at + 1);
+    if (!authority) return "";
+    if (authority.charAt(0) === "[") {
+      var close = authority.indexOf("]");
+      return (close >= 0 ? authority.slice(0, close + 1) : authority).toLowerCase();
+    }
+    return authority.split(":")[0].toLowerCase();
+  }
+  function extractUrlPort(value) {
+    var authority = extractUrlAuthority(value);
+    var at = authority.lastIndexOf("@");
+    if (at >= 0) authority = authority.slice(at + 1);
+    if (!authority) return "";
+    if (authority.charAt(0) === "[") {
+      var close = authority.indexOf("]");
+      if (close >= 0 && authority.charAt(close + 1) === ":") return authority.slice(close + 2).match(/^\d*/)[0];
+      return "";
+    }
+    var colon = authority.indexOf(":");
+    return colon >= 0 ? authority.slice(colon + 1).match(/^\d*/)[0] : "";
+  }
+  function urlHasExplicitPort(value) {
+    return extractUrlPort(value) !== "";
+  }
+  function isLocalImmichHost(host) {
+    if (!host) return false;
+    if (host === "localhost" || host.charAt(0) === "[") return true;
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return true;
+    return host.slice(-6) === ".local" || host.slice(-4) === ".lan";
+  }
+  function normalizeImmichUrl(value) {
+    var url = stripUrlTrailingSlashes(String(value == null ? "" : value).trim());
+    if (!url) return "";
+    if (url.indexOf("//") === 0) {
+      url = "https:" + url;
+    } else if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(url)) {
+      var host = extractUrlHost(url);
+      var port = extractUrlPort(url);
+      var useHttp = isLocalImmichHost(host) || urlHasExplicitPort(url);
+      if (port === "443") useHttp = false;
+      url = (useHttp ? "http://" : "https://") + url;
+    }
+    return stripUrlTrailingSlashes(url.replace(/^([a-z][a-z0-9+.-]*):\/\//i, function(_, scheme) {
+      return scheme.toLowerCase() + "://";
+    }));
+  }
+  function photoIdFieldLengthLimit() {
+    return MAX_PHOTO_ID_FIELD_LENGTH;
+  }
+  function photoIdFieldTooLong(s) {
+    return String(s != null ? s : "").trim().length > photoIdFieldLengthLimit();
+  }
+  function photoLabelFieldTooLong(s) {
+    return String(s != null ? s : "").trim().length > photoIdFieldLengthLimit();
+  }
+  var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  function isValidUuidList(str) {
+    var s = str.trim();
+    if (!s) return true;
+    return s.split(",").every(function(id) {
+      return UUID_RE.test(id.trim());
+    });
+  }
+  function splitPhotoIdList(str) {
+    var parts = String(str || "").split(",").map(function(id) {
+      return id.trim();
+    }).filter(Boolean);
+    return parts.length ? parts : [""];
+  }
+  function parsePhotoLabelList(str) {
+    var raw = String(str || "").trim();
+    if (!raw) return [];
+    try {
+      var parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map(function(label) {
+        return String(label || "");
+      });
+    } catch (_) {
+    }
+    return raw.split(",").map(function(label) {
+      return label.trim();
+    });
+  }
+
+  // docs/webserver/src/app.ts
+  var EspframeAppElement = class extends HTMLElement {
+  };
   if (!customElements.get("espframe-app")) {
     customElements.define("espframe-app", EspframeAppElement);
   }
@@ -33,20 +213,19 @@
   }
   var TIMEZONES = ["Pacific/Midway (GMT-11)", "Pacific/Pago_Pago (GMT-11)", "Pacific/Honolulu (GMT-10)", "America/Adak (GMT-10)", "America/Anchorage (GMT-9)", "America/Juneau (GMT-9)", "America/Los_Angeles (GMT-8)", "America/Vancouver (GMT-8)", "America/Tijuana (GMT-8)", "America/Denver (GMT-7)", "America/Phoenix (GMT-7)", "America/Edmonton (GMT-7)", "America/Boise (GMT-7)", "America/Chicago (GMT-6)", "America/Mexico_City (GMT-6)", "America/Winnipeg (GMT-6)", "America/Guatemala (GMT-6)", "America/Costa_Rica (GMT-6)", "America/New_York (GMT-5)", "America/Toronto (GMT-5)", "America/Detroit (GMT-5)", "America/Havana (GMT-5)", "America/Bogota (GMT-5)", "America/Lima (GMT-5)", "America/Jamaica (GMT-5)", "America/Panama (GMT-5)", "America/Halifax (GMT-4)", "America/Caracas (GMT-4)", "America/Santiago (GMT-4)", "America/La_Paz (GMT-4)", "America/Manaus (GMT-4)", "America/Barbados (GMT-4)", "America/Puerto_Rico (GMT-4)", "America/Santo_Domingo (GMT-4)", "America/St_Johns (GMT-3:30)", "America/Sao_Paulo (GMT-3)", "America/Argentina/Buenos_Aires (GMT-3)", "America/Montevideo (GMT-3)", "America/Paramaribo (GMT-3)", "Atlantic/South_Georgia (GMT-2)", "Atlantic/Azores (GMT-1)", "Atlantic/Cape_Verde (GMT-1)", "UTC (GMT+0)", "Europe/London (GMT+0)", "Europe/Dublin (GMT+0)", "Europe/Lisbon (GMT+0)", "Africa/Casablanca (GMT+1)", "Africa/Accra (GMT+0)", "Atlantic/Reykjavik (GMT+0)", "Europe/Paris (GMT+1)", "Europe/Berlin (GMT+1)", "Europe/Rome (GMT+1)", "Europe/Madrid (GMT+1)", "Europe/Amsterdam (GMT+1)", "Europe/Brussels (GMT+1)", "Europe/Vienna (GMT+1)", "Europe/Zurich (GMT+1)", "Europe/Stockholm (GMT+1)", "Europe/Oslo (GMT+1)", "Europe/Copenhagen (GMT+1)", "Europe/Warsaw (GMT+1)", "Europe/Prague (GMT+1)", "Europe/Budapest (GMT+1)", "Europe/Belgrade (GMT+1)", "Africa/Lagos (GMT+1)", "Africa/Tunis (GMT+1)", "Africa/Cairo (GMT+2)", "Europe/Athens (GMT+2)", "Europe/Bucharest (GMT+2)", "Europe/Helsinki (GMT+2)", "Europe/Kyiv (GMT+2)", "Europe/Istanbul (GMT+3)", "Africa/Johannesburg (GMT+2)", "Africa/Nairobi (GMT+3)", "Asia/Jerusalem (GMT+2)", "Asia/Amman (GMT+3)", "Asia/Beirut (GMT+2)", "Europe/Moscow (GMT+3)", "Asia/Baghdad (GMT+3)", "Asia/Riyadh (GMT+3)", "Asia/Kuwait (GMT+3)", "Asia/Qatar (GMT+3)", "Africa/Addis_Ababa (GMT+3)", "Asia/Tehran (GMT+3:30)", "Asia/Dubai (GMT+4)", "Asia/Muscat (GMT+4)", "Asia/Baku (GMT+4)", "Asia/Tbilisi (GMT+4)", "Indian/Mauritius (GMT+4)", "Asia/Kabul (GMT+4:30)", "Asia/Karachi (GMT+5)", "Asia/Tashkent (GMT+5)", "Asia/Yekaterinburg (GMT+5)", "Asia/Kolkata (GMT+5:30)", "Asia/Colombo (GMT+5:30)", "Asia/Kathmandu (GMT+5:45)", "Asia/Dhaka (GMT+6)", "Asia/Almaty (GMT+5)", "Asia/Rangoon (GMT+6:30)", "Asia/Bangkok (GMT+7)", "Asia/Jakarta (GMT+7)", "Asia/Ho_Chi_Minh (GMT+7)", "Asia/Singapore (GMT+8)", "Asia/Kuala_Lumpur (GMT+8)", "Asia/Shanghai (GMT+8)", "Asia/Hong_Kong (GMT+8)", "Asia/Taipei (GMT+8)", "Asia/Manila (GMT+8)", "Australia/Perth (GMT+8)", "Asia/Tokyo (GMT+9)", "Asia/Seoul (GMT+9)", "Asia/Pyongyang (GMT+9)", "Australia/Adelaide (GMT+9:30)", "Australia/Darwin (GMT+9:30)", "Australia/Sydney (GMT+10)", "Australia/Melbourne (GMT+10)", "Australia/Brisbane (GMT+10)", "Australia/Hobart (GMT+10)", "Pacific/Guam (GMT+10)", "Pacific/Port_Moresby (GMT+10)", "Asia/Vladivostok (GMT+10)", "Pacific/Noumea (GMT+11)", "Pacific/Norfolk (GMT+11)", "Asia/Magadan (GMT+11)", "Pacific/Auckland (GMT+12)", "Pacific/Fiji (GMT+12)", "Pacific/Chatham (GMT+12:45)", "Pacific/Tongatapu (GMT+13)", "Pacific/Apia (GMT+13)", "Pacific/Kiritimati (GMT+14)"];
   var TIMEZONE_LABELS = { "Pacific/Midway (GMT-11)": "Pacific/Midway (GMT-11)", "Pacific/Pago_Pago (GMT-11)": "Pacific/Pago_Pago (GMT-11)", "Pacific/Honolulu (GMT-10)": "Pacific/Honolulu (GMT-10)", "America/Adak (GMT-10)": "America/Adak (GMT-10; daylight GMT-9)", "America/Anchorage (GMT-9)": "America/Anchorage (GMT-9; daylight GMT-8)", "America/Juneau (GMT-9)": "America/Juneau (GMT-9; daylight GMT-8)", "America/Los_Angeles (GMT-8)": "America/Los_Angeles (GMT-8; daylight GMT-7)", "America/Vancouver (GMT-8)": "America/Vancouver (GMT-8; active GMT-7)", "America/Tijuana (GMT-8)": "America/Tijuana (GMT-8; daylight GMT-7)", "America/Denver (GMT-7)": "America/Denver (GMT-7; daylight GMT-6)", "America/Phoenix (GMT-7)": "America/Phoenix (GMT-7)", "America/Edmonton (GMT-7)": "America/Edmonton (GMT-7; active GMT-6)", "America/Boise (GMT-7)": "America/Boise (GMT-7; daylight GMT-6)", "America/Chicago (GMT-6)": "America/Chicago (GMT-6; daylight GMT-5)", "America/Mexico_City (GMT-6)": "America/Mexico_City (GMT-6)", "America/Winnipeg (GMT-6)": "America/Winnipeg (GMT-6; daylight GMT-5)", "America/Guatemala (GMT-6)": "America/Guatemala (GMT-6)", "America/Costa_Rica (GMT-6)": "America/Costa_Rica (GMT-6)", "America/New_York (GMT-5)": "America/New_York (GMT-5; daylight GMT-4)", "America/Toronto (GMT-5)": "America/Toronto (GMT-5; daylight GMT-4)", "America/Detroit (GMT-5)": "America/Detroit (GMT-5; daylight GMT-4)", "America/Havana (GMT-5)": "America/Havana (GMT-5; daylight GMT-4)", "America/Bogota (GMT-5)": "America/Bogota (GMT-5)", "America/Lima (GMT-5)": "America/Lima (GMT-5)", "America/Jamaica (GMT-5)": "America/Jamaica (GMT-5)", "America/Panama (GMT-5)": "America/Panama (GMT-5)", "America/Halifax (GMT-4)": "America/Halifax (GMT-4; daylight GMT-3)", "America/Caracas (GMT-4)": "America/Caracas (GMT-4)", "America/Santiago (GMT-4)": "America/Santiago (GMT-4; daylight GMT-3)", "America/La_Paz (GMT-4)": "America/La_Paz (GMT-4)", "America/Manaus (GMT-4)": "America/Manaus (GMT-4)", "America/Barbados (GMT-4)": "America/Barbados (GMT-4)", "America/Puerto_Rico (GMT-4)": "America/Puerto_Rico (GMT-4)", "America/Santo_Domingo (GMT-4)": "America/Santo_Domingo (GMT-4)", "America/St_Johns (GMT-3:30)": "America/St_Johns (GMT-3:30; daylight GMT-2:30)", "America/Sao_Paulo (GMT-3)": "America/Sao_Paulo (GMT-3)", "America/Argentina/Buenos_Aires (GMT-3)": "America/Argentina/Buenos_Aires (GMT-3)", "America/Montevideo (GMT-3)": "America/Montevideo (GMT-3)", "America/Paramaribo (GMT-3)": "America/Paramaribo (GMT-3)", "Atlantic/South_Georgia (GMT-2)": "Atlantic/South_Georgia (GMT-2)", "Atlantic/Azores (GMT-1)": "Atlantic/Azores (GMT-1; daylight GMT+0)", "Atlantic/Cape_Verde (GMT-1)": "Atlantic/Cape_Verde (GMT-1)", "UTC (GMT+0)": "UTC (GMT+0)", "Europe/London (GMT+0)": "Europe/London (GMT+0; daylight GMT+1)", "Europe/Dublin (GMT+0)": "Europe/Dublin (GMT+0; daylight GMT+1)", "Europe/Lisbon (GMT+0)": "Europe/Lisbon (GMT+0; daylight GMT+1)", "Africa/Casablanca (GMT+1)": "Africa/Casablanca (GMT+1)", "Africa/Accra (GMT+0)": "Africa/Accra (GMT+0)", "Atlantic/Reykjavik (GMT+0)": "Atlantic/Reykjavik (GMT+0)", "Europe/Paris (GMT+1)": "Europe/Paris (GMT+1; daylight GMT+2)", "Europe/Berlin (GMT+1)": "Europe/Berlin (GMT+1; daylight GMT+2)", "Europe/Rome (GMT+1)": "Europe/Rome (GMT+1; daylight GMT+2)", "Europe/Madrid (GMT+1)": "Europe/Madrid (GMT+1; daylight GMT+2)", "Europe/Amsterdam (GMT+1)": "Europe/Amsterdam (GMT+1; daylight GMT+2)", "Europe/Brussels (GMT+1)": "Europe/Brussels (GMT+1; daylight GMT+2)", "Europe/Vienna (GMT+1)": "Europe/Vienna (GMT+1; daylight GMT+2)", "Europe/Zurich (GMT+1)": "Europe/Zurich (GMT+1; daylight GMT+2)", "Europe/Stockholm (GMT+1)": "Europe/Stockholm (GMT+1; daylight GMT+2)", "Europe/Oslo (GMT+1)": "Europe/Oslo (GMT+1; daylight GMT+2)", "Europe/Copenhagen (GMT+1)": "Europe/Copenhagen (GMT+1; daylight GMT+2)", "Europe/Warsaw (GMT+1)": "Europe/Warsaw (GMT+1; daylight GMT+2)", "Europe/Prague (GMT+1)": "Europe/Prague (GMT+1; daylight GMT+2)", "Europe/Budapest (GMT+1)": "Europe/Budapest (GMT+1; daylight GMT+2)", "Europe/Belgrade (GMT+1)": "Europe/Belgrade (GMT+1; daylight GMT+2)", "Africa/Lagos (GMT+1)": "Africa/Lagos (GMT+1)", "Africa/Tunis (GMT+1)": "Africa/Tunis (GMT+1)", "Africa/Cairo (GMT+2)": "Africa/Cairo (GMT+2; daylight GMT+3)", "Europe/Athens (GMT+2)": "Europe/Athens (GMT+2; daylight GMT+3)", "Europe/Bucharest (GMT+2)": "Europe/Bucharest (GMT+2; daylight GMT+3)", "Europe/Helsinki (GMT+2)": "Europe/Helsinki (GMT+2; daylight GMT+3)", "Europe/Kyiv (GMT+2)": "Europe/Kyiv (GMT+2; daylight GMT+3)", "Europe/Istanbul (GMT+3)": "Europe/Istanbul (GMT+3)", "Africa/Johannesburg (GMT+2)": "Africa/Johannesburg (GMT+2)", "Africa/Nairobi (GMT+3)": "Africa/Nairobi (GMT+3)", "Asia/Jerusalem (GMT+2)": "Asia/Jerusalem (GMT+2; daylight GMT+3)", "Asia/Amman (GMT+3)": "Asia/Amman (GMT+3)", "Asia/Beirut (GMT+2)": "Asia/Beirut (GMT+2; daylight GMT+3)", "Europe/Moscow (GMT+3)": "Europe/Moscow (GMT+3)", "Asia/Baghdad (GMT+3)": "Asia/Baghdad (GMT+3)", "Asia/Riyadh (GMT+3)": "Asia/Riyadh (GMT+3)", "Asia/Kuwait (GMT+3)": "Asia/Kuwait (GMT+3)", "Asia/Qatar (GMT+3)": "Asia/Qatar (GMT+3)", "Africa/Addis_Ababa (GMT+3)": "Africa/Addis_Ababa (GMT+3)", "Asia/Tehran (GMT+3:30)": "Asia/Tehran (GMT+3:30)", "Asia/Dubai (GMT+4)": "Asia/Dubai (GMT+4)", "Asia/Muscat (GMT+4)": "Asia/Muscat (GMT+4)", "Asia/Baku (GMT+4)": "Asia/Baku (GMT+4)", "Asia/Tbilisi (GMT+4)": "Asia/Tbilisi (GMT+4)", "Indian/Mauritius (GMT+4)": "Indian/Mauritius (GMT+4)", "Asia/Kabul (GMT+4:30)": "Asia/Kabul (GMT+4:30)", "Asia/Karachi (GMT+5)": "Asia/Karachi (GMT+5)", "Asia/Tashkent (GMT+5)": "Asia/Tashkent (GMT+5)", "Asia/Yekaterinburg (GMT+5)": "Asia/Yekaterinburg (GMT+5)", "Asia/Kolkata (GMT+5:30)": "Asia/Kolkata (GMT+5:30)", "Asia/Colombo (GMT+5:30)": "Asia/Colombo (GMT+5:30)", "Asia/Kathmandu (GMT+5:45)": "Asia/Kathmandu (GMT+5:45)", "Asia/Dhaka (GMT+6)": "Asia/Dhaka (GMT+6)", "Asia/Almaty (GMT+5)": "Asia/Almaty (GMT+5)", "Asia/Rangoon (GMT+6:30)": "Asia/Rangoon (GMT+6:30)", "Asia/Bangkok (GMT+7)": "Asia/Bangkok (GMT+7)", "Asia/Jakarta (GMT+7)": "Asia/Jakarta (GMT+7)", "Asia/Ho_Chi_Minh (GMT+7)": "Asia/Ho_Chi_Minh (GMT+7)", "Asia/Singapore (GMT+8)": "Asia/Singapore (GMT+8)", "Asia/Kuala_Lumpur (GMT+8)": "Asia/Kuala_Lumpur (GMT+8)", "Asia/Shanghai (GMT+8)": "Asia/Shanghai (GMT+8)", "Asia/Hong_Kong (GMT+8)": "Asia/Hong_Kong (GMT+8)", "Asia/Taipei (GMT+8)": "Asia/Taipei (GMT+8)", "Asia/Manila (GMT+8)": "Asia/Manila (GMT+8)", "Australia/Perth (GMT+8)": "Australia/Perth (GMT+8)", "Asia/Tokyo (GMT+9)": "Asia/Tokyo (GMT+9)", "Asia/Seoul (GMT+9)": "Asia/Seoul (GMT+9)", "Asia/Pyongyang (GMT+9)": "Asia/Pyongyang (GMT+9)", "Australia/Adelaide (GMT+9:30)": "Australia/Adelaide (GMT+9:30; daylight GMT+10:30)", "Australia/Darwin (GMT+9:30)": "Australia/Darwin (GMT+9:30)", "Australia/Sydney (GMT+10)": "Australia/Sydney (GMT+10; daylight GMT+11)", "Australia/Melbourne (GMT+10)": "Australia/Melbourne (GMT+10; daylight GMT+11)", "Australia/Brisbane (GMT+10)": "Australia/Brisbane (GMT+10)", "Australia/Hobart (GMT+10)": "Australia/Hobart (GMT+10; daylight GMT+11)", "Pacific/Guam (GMT+10)": "Pacific/Guam (GMT+10)", "Pacific/Port_Moresby (GMT+10)": "Pacific/Port_Moresby (GMT+10)", "Asia/Vladivostok (GMT+10)": "Asia/Vladivostok (GMT+10)", "Pacific/Noumea (GMT+11)": "Pacific/Noumea (GMT+11)", "Pacific/Norfolk (GMT+11)": "Pacific/Norfolk (GMT+11; daylight GMT+12)", "Asia/Magadan (GMT+11)": "Asia/Magadan (GMT+11)", "Pacific/Auckland (GMT+12)": "Pacific/Auckland (GMT+12; daylight GMT+13)", "Pacific/Fiji (GMT+12)": "Pacific/Fiji (GMT+12)", "Pacific/Chatham (GMT+12:45)": "Pacific/Chatham (GMT+12:45; daylight GMT+13:45)", "Pacific/Tongatapu (GMT+13)": "Pacific/Tongatapu (GMT+13)", "Pacific/Apia (GMT+13)": "Pacific/Apia (GMT+13)", "Pacific/Kiritimati (GMT+14)": "Pacific/Kiritimati (GMT+14)" };
-  var PRODUCT_SETTINGS = { "photo_source": { "entity": "select/Photos: Source", "domain": "select", "default": "All Photos", "options": ["All Photos", "Favorites", "Album", "Person", "Tag", "Memories", "Custom"] }, "album_order": { "entity": "select/Photos: Album Order", "domain": "select", "default": "Random albums", "options": ["Random albums", "Album list order"] }, "tag_matching": { "entity": "select/Photos: Tag Matching", "domain": "select", "default": "Any selected tag", "options": ["Any selected tag", "All selected tags"] }, "date_filter_mode": { "entity": "select/Photos: Date Filter Mode", "domain": "select", "default": "Fixed Range", "options": ["Fixed Range", "Relative Range"] }, "relative_unit": { "entity": "select/Photos: Relative Unit", "domain": "select", "default": "Years", "options": ["Months", "Years"] }, "photo_orientation": { "entity": "select/Photos: Orientation", "domain": "select", "default": "Any", "options": ["Any", "Portrait Only", "Landscape Only"] }, "display_mode": { "entity": "select/Photos: Display Mode", "domain": "select", "default": "Fill", "options": ["Fill", "Fit"] }, "interval": { "entity": "select/Photos: Slideshow Interval", "domain": "select", "default": "15 seconds", "options": ["10 seconds", "15 seconds", "20 seconds", "30 seconds", "45 seconds", "1 minute", "2 minutes", "3 minutes", "5 minutes", "10 minutes", "15 minutes", "30 minutes", "1 hour", "2 hours", "4 hours", "8 hours", "16 hours", "24 hours"] }, "conn_timeout": { "entity": "select/Screen: Connection Timeout", "domain": "select", "default": "10 minutes", "options": ["30 seconds", "45 seconds", "1 minute", "2 minutes", "3 minutes", "5 minutes", "10 minutes", "15 minutes", "20 minutes", "30 minutes"] }, "screen_rotation": { "entity": "select/Screen: Rotation", "domain": "select", "default": "0", "options": ["0", "180"], "developerOptions": ["90", "270"] }, "photo_metadata_date_format": { "entity": "select/Device: Metadata Date Format", "domain": "select", "default": "Date Taken", "options": ["Relative Date", "Date Taken"] }, "photo_metadata_date_taken_format": { "entity": "select/Device: Metadata Date Taken Format", "domain": "select", "default": "1 January, 2026", "options": ["1 January, 2026", "January 1, 2026"] }, "clock_format": { "entity": "select/Clock: Format", "domain": "select", "default": "24 Hour", "options": ["24 Hour", "12 Hour"] }, "update_frequency": { "entity": "select/Firmware: Update Frequency", "domain": "select", "default": "Daily", "options": ["Hourly", "Daily", "Weekly", "Monthly"] }, "auto_update": { "entity": "switch/Firmware: Auto Update", "domain": "switch", "default": true, "options": [] }, "c6_auto_update": { "entity": "switch/WiFi Firmware: Auto Update", "domain": "switch", "default": true, "options": [] }, "date_filter_enabled": { "entity": "switch/Photos: Date Filter", "domain": "switch", "default": false, "options": [] }, "date_from": { "entity": "text/Photos: Date From", "domain": "text", "default": "", "options": [], "maxLength": 10 }, "date_to": { "entity": "text/Photos: Date To", "domain": "text", "default": "", "options": [], "maxLength": 10 }, "relative_amount": { "entity": "number/Photos: Relative Amount", "domain": "number", "default": 1, "options": [], "min": 1, "max": 120, "step": 1 }, "schedule_enabled": { "entity": "switch/Screen: Schedule Enabled", "domain": "switch", "default": false, "options": [] }, "schedule_on_hour": { "entity": "number/Screen: Schedule On Hour", "domain": "number", "default": 6, "options": [], "min": 0, "max": 23, "step": 1 }, "schedule_off_hour": { "entity": "number/Screen: Schedule Off Hour", "domain": "number", "default": 23, "options": [], "min": 0, "max": 23, "step": 1 }, "schedule_wake_timeout": { "entity": "number/Screen: Schedule Wake Timeout", "domain": "number", "default": 60, "options": [], "min": 10, "max": 3600, "step": 10 }, "brightness_day": { "entity": "number/Screen: Daytime Brightness", "domain": "number", "default": 100, "options": [], "min": 10, "max": 100, "step": 5 }, "brightness_night": { "entity": "number/Screen: Nighttime Brightness", "domain": "number", "default": 75, "options": [], "min": 10, "max": 100, "step": 5 }, "base_tone_enabled": { "entity": "switch/Screen: Tone Adjustment", "domain": "switch", "default": false, "options": [] }, "base_tone": { "entity": "number/Screen: Display Tone", "domain": "number", "default": 0, "options": [], "min": 0, "max": 100, "step": 5 }, "warm_tones_enabled": { "entity": "switch/Screen: Night Tone Adjustment", "domain": "switch", "default": false, "options": [] }, "warm_tone_intensity": { "entity": "number/Screen: Warm Tone Intensity", "domain": "number", "default": 50, "options": [], "min": 10, "max": 100, "step": 5 }, "warm_tone_override": { "entity": "switch/Screen: Warm Tone Override", "domain": "switch", "default": false, "options": [] }, "portrait_pairing": { "entity": "switch/Photos: Portrait Pairing", "domain": "switch", "default": true, "options": [] }, "portrait_pairing_range": { "entity": "select/Photos: Portrait Pairing Range", "domain": "select", "default": "Same Day", "options": ["Same Day", "Within 1 Day", "Within 2 Days"] }, "portrait_pairs_only": { "entity": "switch/Photos: Paired Portraits Only", "domain": "switch", "default": false, "options": [] }, "photo_metadata_date_enabled": { "entity": "switch/Device: Metadata Date", "domain": "switch", "default": true, "options": [] }, "photo_metadata_location_enabled": { "entity": "switch/Device: Metadata Location", "domain": "switch", "default": true, "options": [] }, "albums_enabled": { "entity": "switch/Photos: Albums Enabled", "domain": "switch", "default": false, "options": [] }, "people_enabled": { "entity": "switch/Photos: People Enabled", "domain": "switch", "default": false, "options": [] }, "tags_enabled": { "entity": "switch/Photos: Tags Enabled", "domain": "switch", "default": false, "options": [] }, "inclusion_matching": { "entity": "select/Photos: Inclusion Groups", "domain": "select", "default": "Match all enabled groups", "options": ["Match all enabled groups", "Match any enabled group"] }, "album_matching": { "entity": "select/Photos: Album Matching", "domain": "select", "default": "Any selected album", "options": ["Any selected album", "All selected albums"] }, "person_matching": { "entity": "select/Photos: Person Matching", "domain": "select", "default": "Any selected person", "options": ["Any selected person", "All selected people"] }, "favorite_mode": { "entity": "select/Photos: Favorites", "domain": "select", "default": "Any", "options": ["Any", "Favorites only", "Exclude favorites"] }, "minimum_rating": { "entity": "select/Photos: Minimum Rating", "domain": "select", "default": "Any", "options": ["Any", "1+", "2+", "3+", "4+", "5+"] }, "filter_country": { "entity": "text/Photos: Country", "domain": "text", "default": "", "options": [], "maxLength": 96 }, "filter_state": { "entity": "text/Photos: State or Province", "domain": "text", "default": "", "options": [], "maxLength": 96 }, "filter_city": { "entity": "text/Photos: City", "domain": "text", "default": "", "options": [], "maxLength": 96 } };
+  var PRODUCT_SETTINGS = { "photo_source": { "entity": "select/Photos: Source", "domain": "select", "default": "All Photos", "options": ["All Photos", "Favorites", "Album", "Person", "Tag", "Memories", "Custom"] }, "album_order": { "entity": "select/Photos: Album Order", "domain": "select", "default": "Random albums", "options": ["Random albums", "Album list order"] }, "tag_matching": { "entity": "select/Photos: Tag Matching", "domain": "select", "default": "Any selected tag", "options": ["Any selected tag", "All selected tags"] }, "date_filter_mode": { "entity": "select/Photos: Date Filter Mode", "domain": "select", "default": "Fixed Range", "options": ["Fixed Range", "Relative Range"] }, "relative_unit": { "entity": "select/Photos: Relative Unit", "domain": "select", "default": "Years", "options": ["Months", "Years"] }, "photo_orientation": { "entity": "select/Photos: Orientation", "domain": "select", "default": "Any", "options": ["Any", "Portrait Only", "Landscape Only"] }, "display_mode": { "entity": "select/Photos: Display Mode", "domain": "select", "default": "Fill", "options": ["Fill", "Fit"] }, "interval": { "entity": "select/Photos: Slideshow Interval", "domain": "select", "default": "15 seconds", "options": ["10 seconds", "15 seconds", "20 seconds", "30 seconds", "45 seconds", "1 minute", "2 minutes", "3 minutes", "5 minutes", "10 minutes", "15 minutes", "30 minutes", "1 hour", "2 hours", "4 hours", "8 hours", "16 hours", "24 hours"] }, "conn_timeout": { "entity": "select/Screen: Connection Timeout", "domain": "select", "default": "10 minutes", "options": ["30 seconds", "45 seconds", "1 minute", "2 minutes", "3 minutes", "5 minutes", "10 minutes", "15 minutes", "20 minutes", "30 minutes"] }, "screen_rotation": { "entity": "select/Screen: Rotation", "domain": "select", "default": "0", "options": ["0", "180"], "developerOptions": ["90", "270"] }, "photo_metadata_date_format": { "entity": "select/Device: Metadata Date Format", "domain": "select", "default": "Date Taken", "options": ["Relative Date", "Date Taken"] }, "photo_metadata_date_taken_format": { "entity": "select/Device: Metadata Date Taken Format", "domain": "select", "default": "1 January, 2026", "options": ["1 January, 2026", "January 1, 2026"] }, "clock_format": { "entity": "select/Clock: Format", "domain": "select", "default": "24 Hour", "options": ["24 Hour", "12 Hour"] }, "update_frequency": { "entity": "select/Firmware: Update Frequency", "domain": "select", "default": "Daily", "options": ["Hourly", "Daily", "Weekly", "Monthly"] }, "auto_update": { "entity": "switch/Firmware: Auto Update", "domain": "switch", "default": true, "options": [] }, "c6_auto_update": { "entity": "switch/WiFi Firmware: Auto Update", "domain": "switch", "default": true, "options": [] }, "date_filter_enabled": { "entity": "switch/Photos: Date Filter", "domain": "switch", "default": false, "options": [] }, "date_from": { "entity": "text/Photos: Date From", "domain": "text", "default": "", "options": [], "maxLength": 10 }, "date_to": { "entity": "text/Photos: Date To", "domain": "text", "default": "", "options": [], "maxLength": 10 }, "relative_amount": { "entity": "number/Photos: Relative Amount", "domain": "number", "default": 1, "options": [], "min": 1, "max": 120, "step": 1 }, "schedule_enabled": { "entity": "switch/Screen: Schedule Enabled", "domain": "switch", "default": false, "options": [] }, "schedule_on_hour": { "entity": "number/Screen: Schedule On Hour", "domain": "number", "default": 6, "options": [], "min": 0, "max": 23, "step": 1 }, "schedule_off_hour": { "entity": "number/Screen: Schedule Off Hour", "domain": "number", "default": 23, "options": [], "min": 0, "max": 23, "step": 1 }, "schedule_wake_timeout": { "entity": "number/Screen: Schedule Wake Timeout", "domain": "number", "default": 60, "options": [], "min": 10, "max": 3600, "step": 10 }, "brightness_day": { "entity": "number/Screen: Daytime Brightness", "domain": "number", "default": 100, "options": [], "min": 10, "max": 100, "step": 5 }, "brightness_night": { "entity": "number/Screen: Nighttime Brightness", "domain": "number", "default": 75, "options": [], "min": 10, "max": 100, "step": 5 }, "base_tone_enabled": { "entity": "switch/Screen: Tone Adjustment", "domain": "switch", "default": false, "options": [] }, "base_tone": { "entity": "number/Screen: Display Tone", "domain": "number", "default": 0, "options": [], "min": 0, "max": 100, "step": 5 }, "warm_tones_enabled": { "entity": "switch/Screen: Night Tone Adjustment", "domain": "switch", "default": false, "options": [] }, "warm_tone_intensity": { "entity": "number/Screen: Warm Tone Intensity", "domain": "number", "default": 50, "options": [], "min": 10, "max": 100, "step": 5 }, "warm_tone_override": { "entity": "switch/Screen: Warm Tone Override", "domain": "switch", "default": false, "options": [] }, "portrait_pairing": { "entity": "switch/Photos: Portrait Pairing", "domain": "switch", "default": true, "options": [] }, "portrait_pairing_range": { "entity": "select/Photos: Portrait Pairing Range", "domain": "select", "default": "Same Day", "options": ["Same Day", "Within 1 Day", "Within 2 Days"] }, "portrait_pairs_only": { "entity": "switch/Photos: Paired Portraits Only", "domain": "switch", "default": false, "options": [] }, "photo_metadata_date_enabled": { "entity": "switch/Device: Metadata Date", "domain": "switch", "default": true, "options": [] }, "photo_metadata_location_enabled": { "entity": "switch/Device: Metadata Location", "domain": "switch", "default": true, "options": [] }, "albums_enabled": { "entity": "switch/Photos: Albums Enabled", "domain": "switch", "default": false, "options": [] }, "people_enabled": { "entity": "switch/Photos: People Enabled", "domain": "switch", "default": false, "options": [] }, "tags_enabled": { "entity": "switch/Photos: Tags Enabled", "domain": "switch", "default": false, "options": [] }, "favorites_enabled": { "entity": "switch/Photos: Favorites Enabled", "domain": "switch", "default": false, "options": [] }, "rating_enabled": { "entity": "switch/Photos: Rating Enabled", "domain": "switch", "default": false, "options": [] }, "location_enabled": { "entity": "switch/Photos: Location Enabled", "domain": "switch", "default": false, "options": [] }, "inclusion_matching": { "entity": "select/Photos: Inclusion Groups", "domain": "select", "default": "Match all enabled groups", "options": ["Match all enabled groups", "Match any enabled group"] }, "album_matching": { "entity": "select/Photos: Album Matching", "domain": "select", "default": "Any selected album", "options": ["Any selected album", "All selected albums"] }, "person_matching": { "entity": "select/Photos: Person Matching", "domain": "select", "default": "Any selected person", "options": ["Any selected person", "All selected people"] }, "favorite_mode": { "entity": "select/Photos: Favorites", "domain": "select", "default": "Any", "options": ["Any", "Favorites only", "Exclude favorites"] }, "minimum_rating": { "entity": "select/Photos: Minimum Rating", "domain": "select", "default": "Any", "options": ["Any", "1+", "2+", "3+", "4+", "5+"] }, "filter_country": { "entity": "text/Photos: Country", "domain": "text", "default": "", "options": [], "maxLength": 96 }, "filter_state": { "entity": "text/Photos: State or Province", "domain": "text", "default": "", "options": [], "maxLength": 96 }, "filter_city": { "entity": "text/Photos: City", "domain": "text", "default": "", "options": [], "maxLength": 96 } };
   var STATIC_ENTITIES = { "firmware_device": { "entity": "text_sensor/Firmware: Device" }, "firmware": { "entity": "text_sensor/Firmware: Version" }, "timezone": { "entity": "select/Clock: Timezone", "optionsKey": "tz_options", "default": "Europe/London (GMT+0)" }, "ntp_server_1": { "entity": "text/Clock: NTP Server 1", "default": "0.pool.ntp.org" }, "ntp_server_2": { "entity": "text/Clock: NTP Server 2", "default": "1.pool.ntp.org" }, "ntp_server_3": { "entity": "text/Clock: NTP Server 3", "default": "2.pool.ntp.org" }, "album_ids": { "entity": "text/Photos: Album IDs" }, "album_labels": { "entity": "text/Photos: Album Labels" }, "person_ids": { "entity": "text/Photos: Person IDs" }, "person_labels": { "entity": "text/Photos: Person Labels" }, "tag_ids": { "entity": "text/Photos: Tag IDs" }, "tag_labels": { "entity": "text/Photos: Tag Labels" }, "excluded_album_ids": { "entity": "text/Photos: Excluded Album IDs" }, "excluded_album_labels": { "entity": "text/Photos: Excluded Album Labels" }, "excluded_person_ids": { "entity": "text/Photos: Excluded Person IDs" }, "excluded_person_labels": { "entity": "text/Photos: Excluded Person Labels" }, "excluded_tag_ids": { "entity": "text/Photos: Excluded Tag IDs" }, "excluded_tag_labels": { "entity": "text/Photos: Excluded Tag Labels" }, "immich_server_version": { "entity": "text_sensor/Immich: Server Version", "default": "Unknown" }, "immich_capability_status": { "entity": "text_sensor/Immich: Filter Capabilities", "default": "Immich 3.1 compatibility" }, "memories_migration_notice": { "entity": "switch/Photos: Memories Migration Notice", "boolFromState": true, "default": false }, "sunrise": { "entity": "text_sensor/Screen: Sunrise" }, "sunset": { "entity": "text_sensor/Screen: Sunset" }, "developer_features_enabled": { "entity": "switch/Developer: Features", "boolFromState": true }, "show_clock": { "entity": "switch/Clock: Show", "boolFromState": true, "default": true }, "c6_current_firmware": { "entity": "text_sensor/ESP32-C6: Current Firmware", "default": "Unknown" }, "c6_available_firmware": { "entity": "text_sensor/ESP32-C6: Available Firmware", "default": "Unknown" }, "c6_update_status": { "entity": "text_sensor/ESP32-C6: Update Available", "default": "Unknown" } };
   var MANUAL_ENTITIES = { "immich_url": { "entity": "text/Connection: Server URL" }, "api_key": { "entity": "text/Connection: API Key" }, "backlight": { "entity": "light/Screen: Backlight" }, "update": { "entity": "update/Firmware: Update" }, "apply_photo_source": { "entity": "button/Apply Photo Source" }, "firmware_check": { "entity": "button/Firmware: Check for Update" }, "firmware_prepare_upload": { "entity": "button/Firmware: Prepare Browser Update" }, "firmware_cancel_upload": { "entity": "button/Firmware: Cancel Browser Update" }, "c6_firmware_check": { "entity": "button/Firmware ESP32-C6: Check for Update" }, "c6_firmware_install": { "entity": "button/Firmware ESP32-C6: Install Update" }, "reboot_screen": { "entity": "button/Device: Reboot Screen" } };
   var MANUAL_STATE_KEYS = ["immich_url", "api_key"];
   var ENTITY_ALIASES = { "schedule_enabled": [{ "entity": "switch/Screen: Schedule", "boolFromState": true }], "schedule_on_hour": [{ "entity": "number/Screen: Schedule On", "default": 6, "number": true }], "schedule_off_hour": [{ "entity": "number/Screen: Schedule Off", "default": 23, "number": true }] };
-  var BACKUP_CONFIG_VERSION = 2;
-  var BACKUP_SCHEMA = [{ "group": "connection", "field": "immich_url", "state_keys": ["immich_url"] }, { "group": "connection", "field": "api_key", "state_keys": ["api_key"] }, { "group": "photos", "field": "source", "state_keys": ["photo_source"] }, { "group": "photos", "field": "albums_enabled", "state_keys": ["albums_enabled"] }, { "group": "photos", "field": "people_enabled", "state_keys": ["people_enabled"] }, { "group": "photos", "field": "tags_enabled", "state_keys": ["tags_enabled"] }, { "group": "photos", "field": "inclusion_matching", "state_keys": ["inclusion_matching"] }, { "group": "photos", "field": "album_matching", "state_keys": ["album_matching"] }, { "group": "photos", "field": "person_matching", "state_keys": ["person_matching"] }, { "group": "photos", "field": "favorite_mode", "state_keys": ["favorite_mode"] }, { "group": "photos", "field": "minimum_rating", "state_keys": ["minimum_rating"] }, { "group": "photos", "field": "country", "state_keys": ["filter_country"] }, { "group": "photos", "field": "state", "state_keys": ["filter_state"] }, { "group": "photos", "field": "city", "state_keys": ["filter_city"] }, { "group": "photos", "field": "album_order", "state_keys": ["album_order"] }, { "group": "photos", "field": "album_ids", "state_keys": ["album_ids"] }, { "group": "photos", "field": "album_labels", "state_keys": ["album_labels"] }, { "group": "photos", "field": "person_ids", "state_keys": ["person_ids"] }, { "group": "photos", "field": "person_labels", "state_keys": ["person_labels"] }, { "group": "photos", "field": "tag_ids", "state_keys": ["tag_ids"] }, { "group": "photos", "field": "tag_labels", "state_keys": ["tag_labels"] }, { "group": "photos", "field": "tag_matching", "state_keys": ["tag_matching"] }, { "group": "photos", "field": "excluded_album_ids", "state_keys": ["excluded_album_ids"] }, { "group": "photos", "field": "excluded_album_labels", "state_keys": ["excluded_album_labels"] }, { "group": "photos", "field": "excluded_person_ids", "state_keys": ["excluded_person_ids"] }, { "group": "photos", "field": "excluded_person_labels", "state_keys": ["excluded_person_labels"] }, { "group": "photos", "field": "excluded_tag_ids", "state_keys": ["excluded_tag_ids"] }, { "group": "photos", "field": "excluded_tag_labels", "state_keys": ["excluded_tag_labels"] }, { "group": "photos", "field": "date_filter_enabled", "state_keys": ["date_filter_enabled"] }, { "group": "photos", "field": "date_filter_mode", "state_keys": ["date_filter_mode"] }, { "group": "photos", "field": "date_from", "state_keys": ["date_from"] }, { "group": "photos", "field": "date_to", "state_keys": ["date_to"] }, { "group": "photos", "field": "relative_amount", "state_keys": ["relative_amount"] }, { "group": "photos", "field": "relative_unit", "state_keys": ["relative_unit"] }, { "group": "photos", "field": "orientation", "state_keys": ["photo_orientation"] }, { "group": "photos", "field": "portrait_pairing", "state_keys": ["portrait_pairing"] }, { "group": "photos", "field": "portrait_pairing_range", "state_keys": ["portrait_pairing_range"] }, { "group": "photos", "field": "portrait_pairs_only", "state_keys": ["portrait_pairs_only"] }, { "group": "photos", "field": "display_mode", "state_keys": ["display_mode"] }, { "group": "frequency", "field": "interval", "state_keys": ["interval"] }, { "group": "frequency", "field": "conn_timeout", "state_keys": ["conn_timeout"] }, { "group": "firmware_updates", "field": "auto_update", "state_keys": ["auto_update"] }, { "group": "firmware_updates", "field": "update_frequency", "state_keys": ["update_frequency"] }, { "group": "firmware_updates", "field": "wifi_auto_update", "state_keys": ["c6_auto_update"] }, { "group": "clock", "field": "show", "state_keys": ["show_clock"] }, { "group": "clock", "field": "format", "state_keys": ["clock_format"] }, { "group": "clock", "field": "timezone", "state_keys": ["timezone"] }, { "group": "clock", "field": "ntp_servers", "state_keys": ["ntp_server_1", "ntp_server_2", "ntp_server_3"] }, { "group": "screen", "field": "brightness_day", "state_keys": ["brightness_day"] }, { "group": "screen", "field": "brightness_night", "state_keys": ["brightness_night"] }, { "group": "screen", "field": "schedule_enabled", "state_keys": ["schedule_enabled"] }, { "group": "screen", "field": "schedule_on_hour", "state_keys": ["schedule_on_hour"] }, { "group": "screen", "field": "schedule_off_hour", "state_keys": ["schedule_off_hour"] }, { "group": "screen", "field": "schedule_wake_timeout", "state_keys": ["schedule_wake_timeout"] }, { "group": "screen", "field": "base_tone_enabled", "state_keys": ["base_tone_enabled"] }, { "group": "screen", "field": "base_tone", "state_keys": ["base_tone"] }, { "group": "screen", "field": "warm_tones_enabled", "state_keys": ["warm_tones_enabled"] }, { "group": "screen", "field": "warm_tone_intensity", "state_keys": ["warm_tone_intensity"] }, { "group": "screen", "field": "warm_tone_override", "state_keys": ["warm_tone_override"] }, { "group": "screen", "field": "rotation", "state_keys": ["screen_rotation"] }];
+  var BACKUP_CONFIG_VERSION = 3;
+  var BACKUP_SCHEMA = [{ "group": "connection", "field": "immich_url", "state_keys": ["immich_url"] }, { "group": "connection", "field": "api_key", "state_keys": ["api_key"] }, { "group": "photos", "field": "source", "state_keys": ["photo_source"] }, { "group": "photos", "field": "albums_enabled", "state_keys": ["albums_enabled"] }, { "group": "photos", "field": "people_enabled", "state_keys": ["people_enabled"] }, { "group": "photos", "field": "tags_enabled", "state_keys": ["tags_enabled"] }, { "group": "photos", "field": "favorites_enabled", "state_keys": ["favorites_enabled"] }, { "group": "photos", "field": "rating_enabled", "state_keys": ["rating_enabled"] }, { "group": "photos", "field": "location_enabled", "state_keys": ["location_enabled"] }, { "group": "photos", "field": "inclusion_matching", "state_keys": ["inclusion_matching"] }, { "group": "photos", "field": "album_matching", "state_keys": ["album_matching"] }, { "group": "photos", "field": "person_matching", "state_keys": ["person_matching"] }, { "group": "photos", "field": "favorite_mode", "state_keys": ["favorite_mode"] }, { "group": "photos", "field": "minimum_rating", "state_keys": ["minimum_rating"] }, { "group": "photos", "field": "country", "state_keys": ["filter_country"] }, { "group": "photos", "field": "state", "state_keys": ["filter_state"] }, { "group": "photos", "field": "city", "state_keys": ["filter_city"] }, { "group": "photos", "field": "album_order", "state_keys": ["album_order"] }, { "group": "photos", "field": "album_ids", "state_keys": ["album_ids"] }, { "group": "photos", "field": "album_labels", "state_keys": ["album_labels"] }, { "group": "photos", "field": "person_ids", "state_keys": ["person_ids"] }, { "group": "photos", "field": "person_labels", "state_keys": ["person_labels"] }, { "group": "photos", "field": "tag_ids", "state_keys": ["tag_ids"] }, { "group": "photos", "field": "tag_labels", "state_keys": ["tag_labels"] }, { "group": "photos", "field": "tag_matching", "state_keys": ["tag_matching"] }, { "group": "photos", "field": "excluded_album_ids", "state_keys": ["excluded_album_ids"] }, { "group": "photos", "field": "excluded_album_labels", "state_keys": ["excluded_album_labels"] }, { "group": "photos", "field": "excluded_person_ids", "state_keys": ["excluded_person_ids"] }, { "group": "photos", "field": "excluded_person_labels", "state_keys": ["excluded_person_labels"] }, { "group": "photos", "field": "excluded_tag_ids", "state_keys": ["excluded_tag_ids"] }, { "group": "photos", "field": "excluded_tag_labels", "state_keys": ["excluded_tag_labels"] }, { "group": "photos", "field": "date_filter_enabled", "state_keys": ["date_filter_enabled"] }, { "group": "photos", "field": "date_filter_mode", "state_keys": ["date_filter_mode"] }, { "group": "photos", "field": "date_from", "state_keys": ["date_from"] }, { "group": "photos", "field": "date_to", "state_keys": ["date_to"] }, { "group": "photos", "field": "relative_amount", "state_keys": ["relative_amount"] }, { "group": "photos", "field": "relative_unit", "state_keys": ["relative_unit"] }, { "group": "photos", "field": "orientation", "state_keys": ["photo_orientation"] }, { "group": "photos", "field": "portrait_pairing", "state_keys": ["portrait_pairing"] }, { "group": "photos", "field": "portrait_pairing_range", "state_keys": ["portrait_pairing_range"] }, { "group": "photos", "field": "portrait_pairs_only", "state_keys": ["portrait_pairs_only"] }, { "group": "photos", "field": "display_mode", "state_keys": ["display_mode"] }, { "group": "frequency", "field": "interval", "state_keys": ["interval"] }, { "group": "frequency", "field": "conn_timeout", "state_keys": ["conn_timeout"] }, { "group": "firmware_updates", "field": "auto_update", "state_keys": ["auto_update"] }, { "group": "firmware_updates", "field": "update_frequency", "state_keys": ["update_frequency"] }, { "group": "firmware_updates", "field": "wifi_auto_update", "state_keys": ["c6_auto_update"] }, { "group": "clock", "field": "show", "state_keys": ["show_clock"] }, { "group": "clock", "field": "format", "state_keys": ["clock_format"] }, { "group": "clock", "field": "timezone", "state_keys": ["timezone"] }, { "group": "clock", "field": "ntp_servers", "state_keys": ["ntp_server_1", "ntp_server_2", "ntp_server_3"] }, { "group": "screen", "field": "brightness_day", "state_keys": ["brightness_day"] }, { "group": "screen", "field": "brightness_night", "state_keys": ["brightness_night"] }, { "group": "screen", "field": "schedule_enabled", "state_keys": ["schedule_enabled"] }, { "group": "screen", "field": "schedule_on_hour", "state_keys": ["schedule_on_hour"] }, { "group": "screen", "field": "schedule_off_hour", "state_keys": ["schedule_off_hour"] }, { "group": "screen", "field": "schedule_wake_timeout", "state_keys": ["schedule_wake_timeout"] }, { "group": "screen", "field": "base_tone_enabled", "state_keys": ["base_tone_enabled"] }, { "group": "screen", "field": "base_tone", "state_keys": ["base_tone"] }, { "group": "screen", "field": "warm_tones_enabled", "state_keys": ["warm_tones_enabled"] }, { "group": "screen", "field": "warm_tone_intensity", "state_keys": ["warm_tone_intensity"] }, { "group": "screen", "field": "warm_tone_override", "state_keys": ["warm_tone_override"] }, { "group": "screen", "field": "rotation", "state_keys": ["screen_rotation"] }];
   var LIVE_RENDER_STATE_KEYS = ["screen_rotation", "portrait_pairing", "developer_features_enabled", "immich_server_version"];
   var LIVE_RENDER_STATE_PREFIXES = ["photo_metadata_", "schedule_"];
   var FIRMWARE_MANIFEST_URLS = { "stable": "https://jtenniswood.github.io/espframe/firmware/manifest.json", "devices": { "immich-frame": { "stable": "https://jtenniswood.github.io/espframe/firmware/manifest.json", "beta": "https://jtenniswood.github.io/espframe/firmware/beta/manifest.json" }, "immich-frame-v2": { "stable": "https://jtenniswood.github.io/espframe/firmware/jc8012p4a1-v2/manifest.json", "beta": "https://jtenniswood.github.io/espframe/firmware/jc8012p4a1-v2/beta/manifest.json" } } };
-  var FIRMWARE_DEVICE_SLUG = "immich-frame";
   var DOCS_BASE_URL = "https://jtenniswood.github.io/espframe";
   var WEB_UI_TABS = [{ "id": "immich", "label": "Immich" }, { "id": "settings", "label": "Device" }, { "id": "logs", "label": "Logs" }];
-  var WEB_UI_CARDS = [{ "id": "connection", "label": "Connection", "tab": "immich", "section": "", "function": "makeConnectionCard", "settings": ["conn_timeout"], "staticEntities": [], "manualEntities": ["immich_url", "api_key"] }, { "id": "frequency", "label": "Frequency", "tab": "immich", "section": "", "function": "makeFrequencyCard", "settings": ["interval"], "staticEntities": [], "manualEntities": [] }, { "id": "photo_source", "label": "Photo Filter", "tab": "immich", "section": "", "function": "makePhotoSourceCard", "settings": ["photo_source", "albums_enabled", "people_enabled", "tags_enabled", "inclusion_matching", "album_matching", "person_matching", "favorite_mode", "minimum_rating", "filter_country", "filter_state", "filter_city", "album_order", "tag_matching"], "staticEntities": ["album_ids", "album_labels", "person_ids", "person_labels", "tag_ids", "tag_labels", "excluded_album_ids", "excluded_album_labels", "excluded_person_ids", "excluded_person_labels", "excluded_tag_ids", "excluded_tag_labels", "immich_server_version", "immich_capability_status", "memories_migration_notice"], "manualEntities": ["apply_photo_source"] }, { "id": "advanced_filters", "label": "Advanced Filters", "tab": "immich", "section": "", "function": "makeAdvancedFiltersCard", "settings": ["date_filter_enabled", "date_filter_mode", "date_from", "date_to", "relative_amount", "relative_unit"], "staticEntities": [], "manualEntities": ["apply_photo_source"] }, { "id": "layout", "label": "Layout", "tab": "immich", "section": "", "function": "makeLayoutCard", "settings": ["portrait_pairing", "portrait_pairing_range", "portrait_pairs_only", "photo_orientation", "display_mode"], "staticEntities": [], "manualEntities": [] }, { "id": "metadata", "label": "Metadata", "tab": "immich", "section": "", "function": "makeMetadataCard", "settings": ["photo_metadata_date_enabled", "photo_metadata_location_enabled", "photo_metadata_date_format", "photo_metadata_date_taken_format"], "staticEntities": [], "manualEntities": [] }, { "id": "screen_brightness", "label": "Screen Brightness", "tab": "settings", "section": "Display", "function": "makeScreenBrightnessCard", "settings": ["brightness_day", "brightness_night"], "staticEntities": ["sunrise", "sunset"], "manualEntities": [] }, { "id": "screen_tone", "label": "Screen Tone", "tab": "settings", "section": "Display", "function": "makeScreenToneCard", "settings": ["base_tone_enabled", "base_tone", "warm_tones_enabled", "warm_tone_intensity", "warm_tone_override"], "staticEntities": [], "manualEntities": [] }, { "id": "rotation", "label": "Rotation", "tab": "settings", "section": "Display", "function": "makeRotationCard", "settings": ["screen_rotation"], "staticEntities": ["developer_features_enabled"], "manualEntities": [] }, { "id": "clock", "label": "Clock", "tab": "settings", "section": "Display", "function": "makeClockCard", "settings": ["clock_format"], "staticEntities": ["show_clock", "timezone", "ntp_server_1", "ntp_server_2", "ntp_server_3"], "manualEntities": [] }, { "id": "night_schedule", "label": "Night Schedule", "tab": "settings", "section": "Sleep & Schedule", "function": "makeNightScheduleCard", "settings": ["schedule_enabled", "schedule_on_hour", "schedule_off_hour", "schedule_wake_timeout"], "staticEntities": ["sunrise", "sunset"], "manualEntities": [] }, { "id": "backup", "label": "Backup", "tab": "settings", "section": "System", "function": "makeBackupCard", "settings": [], "staticEntities": [], "manualEntities": [] }, { "id": "firmware", "label": "Firmware", "tab": "settings", "section": "System", "function": "makeFirmwareCard", "settings": ["update_frequency", "auto_update", "c6_auto_update"], "staticEntities": ["firmware_device", "firmware", "c6_current_firmware", "c6_available_firmware", "c6_update_status"], "manualEntities": ["update", "firmware_prepare_upload", "firmware_cancel_upload", "firmware_check", "c6_firmware_check", "c6_firmware_install"] }, { "id": "device_reboot", "label": "Device Reboot", "tab": "settings", "section": "System", "function": "makeDeviceRebootCard", "settings": [], "staticEntities": [], "manualEntities": ["reboot_screen"] }, { "id": "developer", "label": "Developer", "tab": "settings", "section": "System", "function": "makeDeveloperCard", "settings": [], "staticEntities": ["developer_features_enabled"], "manualEntities": [] }];
+  var WEB_UI_CARDS = [{ "id": "connection", "label": "Connection", "tab": "immich", "section": "", "function": "makeConnectionCard", "settings": ["conn_timeout"], "staticEntities": [], "manualEntities": ["immich_url", "api_key"] }, { "id": "frequency", "label": "Frequency", "tab": "immich", "section": "", "function": "makeFrequencyCard", "settings": ["interval"], "staticEntities": [], "manualEntities": [] }, { "id": "portrait_pairing", "label": "Portrait Pairing", "tab": "immich", "section": "", "function": "makePortraitPairingCard", "settings": ["portrait_pairing", "portrait_pairs_only", "portrait_pairing_range"], "staticEntities": [], "manualEntities": [] }, { "id": "photo_source", "label": "Photo Filter", "tab": "immich", "section": "", "function": "makePhotoSourceCard", "settings": ["photo_source", "albums_enabled", "people_enabled", "tags_enabled", "date_filter_enabled", "date_filter_mode", "date_from", "date_to", "relative_amount", "relative_unit", "favorites_enabled", "rating_enabled", "location_enabled", "inclusion_matching", "album_matching", "person_matching", "tag_matching", "favorite_mode", "minimum_rating", "filter_country", "filter_state", "filter_city", "album_order"], "staticEntities": ["album_ids", "album_labels", "person_ids", "person_labels", "tag_ids", "tag_labels", "excluded_album_ids", "excluded_album_labels", "excluded_person_ids", "excluded_person_labels", "excluded_tag_ids", "excluded_tag_labels", "immich_server_version", "immich_capability_status", "memories_migration_notice"], "manualEntities": ["apply_photo_source"] }, { "id": "layout", "label": "Photo Display", "tab": "immich", "section": "", "function": "makeLayoutCard", "settings": ["photo_orientation", "display_mode"], "staticEntities": [], "manualEntities": [] }, { "id": "metadata", "label": "Metadata", "tab": "immich", "section": "", "function": "makeMetadataCard", "settings": ["photo_metadata_date_enabled", "photo_metadata_location_enabled", "photo_metadata_date_format", "photo_metadata_date_taken_format"], "staticEntities": [], "manualEntities": [] }, { "id": "screen_brightness", "label": "Screen Brightness", "tab": "settings", "section": "Display", "function": "makeScreenBrightnessCard", "settings": ["brightness_day", "brightness_night"], "staticEntities": ["sunrise", "sunset"], "manualEntities": [] }, { "id": "screen_tone", "label": "Screen Tone", "tab": "settings", "section": "Display", "function": "makeScreenToneCard", "settings": ["base_tone_enabled", "base_tone", "warm_tones_enabled", "warm_tone_intensity", "warm_tone_override"], "staticEntities": [], "manualEntities": [] }, { "id": "rotation", "label": "Rotation", "tab": "settings", "section": "Display", "function": "makeRotationCard", "settings": ["screen_rotation"], "staticEntities": ["developer_features_enabled"], "manualEntities": [] }, { "id": "clock", "label": "Clock", "tab": "settings", "section": "Display", "function": "makeClockCard", "settings": ["clock_format"], "staticEntities": ["show_clock", "timezone", "ntp_server_1", "ntp_server_2", "ntp_server_3"], "manualEntities": [] }, { "id": "night_schedule", "label": "Night Schedule", "tab": "settings", "section": "Sleep & Schedule", "function": "makeNightScheduleCard", "settings": ["schedule_enabled", "schedule_on_hour", "schedule_off_hour", "schedule_wake_timeout"], "staticEntities": ["sunrise", "sunset"], "manualEntities": [] }, { "id": "backup", "label": "Backup", "tab": "settings", "section": "System", "function": "makeBackupCard", "settings": [], "staticEntities": [], "manualEntities": [] }, { "id": "firmware", "label": "Firmware", "tab": "settings", "section": "System", "function": "makeFirmwareCard", "settings": ["update_frequency", "auto_update", "c6_auto_update"], "staticEntities": ["firmware_device", "firmware", "c6_current_firmware", "c6_available_firmware", "c6_update_status"], "manualEntities": ["update", "firmware_prepare_upload", "firmware_cancel_upload", "firmware_check", "c6_firmware_check", "c6_firmware_install"] }, { "id": "device_reboot", "label": "Device Reboot", "tab": "settings", "section": "System", "function": "makeDeviceRebootCard", "settings": [], "staticEntities": [], "manualEntities": ["reboot_screen"] }, { "id": "developer", "label": "Developer", "tab": "settings", "section": "System", "function": "makeDeveloperCard", "settings": [], "staticEntities": ["developer_features_enabled"], "manualEntities": [] }];
   var WEB_UI_LOGS_RETAINED_LINES = 1e3;
   var SUPPORT_URL = "https://www.buymeacoffee.com/jtenniswood";
   var SUPPORT_BUTTON_IMAGE_DATA_URI = "data:image/webp;base64,UklGRu4MAABXRUJQVlA4WAoAAAAQAAAA2AAAOwAAQUxQSG4AAAABcFtr29K8NboK5285LEPFSuzgrjNFKk/w+o0nIggkbWaNvwAAKHbSM5EYWBFFT8bBE4usTc/HxgIg9j0jewl613MSwOlJdTbbnhW3p9Wp5+Xvf3//+zDtRGxOSGwAymuyS2xkzWsWT+3IwOt6AlZQOCBaDAAAUDYAnQEq2QA8AD5JII5EoqIhlSqteCgEhLYAaicAv27r9pKdq/G/8w/mVq79s+9nKsmq67P0H23fAT1AflX/Oe4B+qH+M9Ir1AfzX/CeoD+N/0j/G/1X3Uv9F/o/YB+tn+u9wD+Zfyz0pPYH/XX2AP5V/YPSn/7n+6+Bv9lP+Z/tfgG/lX9W+///h94B6AHq/9KOvf+z/j55r99jv97Vf1H2NMb/O7+7+hX8c+u/3b8mfzM9mbwB92f8x6gX4h/Iv7V+WP5gchQAD8s/nn+J+5b0cNU3uP/nvcA/jH8q/vf5g+qT4RfjnsAfyH+0f8f/Ce63+8f+D/SflL7X/y/+5/8v/EfAP/Kf6l/uf73+Tnzkexr9yPZgM2JBazSmkrpjSRSnJbdchXHmgCRYbamNpbdhkx6iTplTdQaOZPe569QakRMg7zwffhrS81BDeVkXHaolGV3K1uUFfUfXkxmxiH9akXO0sO2eEcuCRSalI43bnhz4gVlZflOcHUjC/cHK92d7iHqIjIQke72Dh5Nc+KbfHu6ao8RBSRo1xYD7bK5odaFI1VkBSaht+OYczNR83oYXXw+uEd+ZQgAA/v2E2JFf00S7ZZurvf45OdwBGfysJTJe8NAkOsnssv7LL9ll/45GsLCqARXe54sz/OpxCLeTuKis6/Fz8DsS4LqboI8pI3J9gFK1ImoUZ0qWzWwsOTYLXKQ6GteX0al+agc5JXKyLtfhPoFNNBGQV2+nUNu16ejPEuaakkePBfxG+Tzvfg0rkndAXKMOFycgsAtd5uHLV8PyGXLXfUvqrJhKbFZ57yRq0haXzN/fylfN01AAEICoED7wFdKlhdCfclwKCDmiblWz/HW3/LJvdJVQQVofCPpsm9qPfZZo0nqnArYU0twSFBWeOQceeaZkPZbFfmbyjMzc/ZWnji/H/WdNUqQRHfj83sJ4/eDnvjNoJhvv3T8wM1TM2apS9YlqsiyWJXKmXi+J1WyCgTytBUB0G/qZRac97djE6xUjvtyViLonMWi2AZHWx2nXLaDwELK6tU+QS31qsW9wp0A1NBsU7mYsozO0ecWjQsLeUSoIOr3VFPIOglZetzQ9gO4r/Q0xwIGpH+k3IWFA6ekVHAsVUE6ic+gQfBgq+oqy3R2PjAX/ct8TTTHwHDyLvoNH9yPvE780Y3JN0wuXQpOXg8dw8lpbtL2SaKgUqXxN7XbHp2JSZetuGxwuapaaXx7/5VC53n1A2xjKRC9fE+xLY3GU8MwM8CrsRRBV8Dbu7eZlO5Uhsb8CsqYkKIA+SpG3uXdbQ1O6IV4y9ZIaxmLlcHHzzLtWJn811VJTt4MSa95HmnrF+016wyRZB/Hl/6YG0YsdFPN4lSOvFp+c3VtuYwHrSFdUVlpyJrq4UxXIsDXxiN10NBYzj+a8RoIZxVF1Jpad6FMQbg94fLOKQQ1EOM15RFNWLDVoG2eIgZVqERyPOQilrOmrAIbsg0PdroPeARqno+Fmgrl4aZipqitQ+Ce+cz2Omqgx3L/GBwnRYEvTT/fdDGpxBkZRZgvoHFyuf6WopWU8tutFErxLysa3NpPhihIcuyDjmhae8LjCSM3b4t0T4IctUhijI4NlHe+09Ps7sGD2RpKXpK4T9VxTYvTQBzg/54Yo3SCYqr7he69twNdmqjgMjoJVVQ74q0fKeUbJVrCXD5WmmagBfvZhyYB/Xmubwg/BIA+VgGWBk+ccstbvruxsXC3+N9KC8mS8VcZfBHkCrNqL8pOKfJmRboq58vENFNVY4kLlO6pW88kj8Sxe2UXl0TpPCivm20QEaA3/j9OelzE5Jw/3eiXPjkNAFKkyYu7YJK5UkvitdDnEZ1mnGrHTxRhyJX7gjo5Ma8JYW1dyUm4vfnnLRrJfRgV2jQ0HHFFYWsp6hwn/r8TrdcHMes1e3+6wGMYOc/qX2glzqFJfCmhHIpvU3SKl0MB/JRd4Rac6uCnJCKgKsBhp60xvOfpjrLCC5fwEyv2wT61lwXeb3xevvZNYoCgl0uwdCULLFVQSL9RJNpwZv1EBKRo5fCn+PerplieqyX2lZqz8ygzMwp7gJLjA6Dlt7gTl/R/y7C6JccayLs2f9N1Gry0I9GSaTyRvM5Sm5l9ASGUobp6jQGtBFENt1k+nR5d05qxmwGmNUYxBW1//qr/xi/D7gFIqa3bpYO9ukwNiHxBPp5JqgHNGZYfKjKoLz/rb30RDnaX0JANcBlRXP3BcFemCObKBqUWEPt8CKopdWWwmPauXl7UFW1kiGUjyVnT6dH7RppEP63ympv+OBbiNE3jP3zJDVm3SfDgkE4Uh/uOyrB9kB7TufzovmLwKe3t8lKza0mmk1Yt3iEA8IqXx9cuwpNYvUoPfbjztyC8J++dsLVJWwQoeKGCczxzjWefTUe82K5fP9mvoVyMPHuFjQlsSCtvEK9VIH9HqSsvZVUFoadZo1GmO6NGFVkMf26cq0KyS7uAizDRjhMqoxddm7LEG1PTSfqgatQRnNyo6AvMiZx9w8/RnI6nilNYrs3wpvH1ce4P9q9zfC01ss6OetWKEG/yDiqs29lhXzawhBMfhpeYnJxchqQzHS71bSmFooQbvf/JGqaKmO2VZz1JrRCKV2Cp3zJMv2zs/IyxWVSv516btmNHIfiCblWYEmnQkyrEx79w8NMCz/wXN8WFG2hdrY5wWFXsWuXs+cS7MEpiexmYOnmf1I37RcRatrk5kW2FBGVb8tMX4apMTGVzSygYp8LrIrZgpgHJpOf/mDYha6BjUDt8Kdle47P19lN25I13881QSpWo2KRUvijLwNzwQ6ORxgY9yEh4RFDTnQFthD9+A84cNPDNhwmGp/Pzpj2xIuJpDmG86Sf1LjOxkOtbPLPZRPmDrpIEifQxG2Qth9b5IWcqDnoz5xElZf5ucEsLRmeHVpIgY5tR3ztNBmV7vL9rn3gOH7wIFf0kGYtdjBm6VPwkmWYjycvQRunimz7qNVuRNRCNPohxKqX/91fFD8i4hoyMhtHXS7lF0JCUfN5SKfpbGp8IpwqjBqs5WSZgd/jq84ni6QtQnQfzWlL5/pOa5qc7VMHoEtLhfYAVn1Aom8PnTEO3GJOsN2Ls/bLuNKLqtgXJ8mU1ldBaHwVPd8JRDz+u9rFoG2YmXZ4BjAG9KonvVudRnrkgqKTCd31684v9Xls1G5bDw3hvriZpOfoOy1xHNVW44numoi+kG2C8Z8qNPZbk72ourHv8C0PZaMe/+yJ/+Nv41pt62tH29M58aW6wGRIFNgtXwy5ep+7yeVAUd0dzREPlL+tx7oqbdpZxXp1Yc76qu/tiju1Vb8LHCDt3uSa8x6jQwF0L62uodMBTsI/q8gfnZXVhHx+ujlPkeBtM9fwoGvWsG+TqZawVW8Nn4aikGJxWuDc9y+Elc1fDOznKziQzK3WTu7x+D3cRc+/+Bt6N9VORnJKVHAaPbKMH3z9LvQjL4L2KFoj2BH78IUuoi+uBQjhl4xl5Pc6vE4sIHW5SNdAbwlxthBL8s+oJtMK9KQ/KJidaAlkI/CM5+k1OkT9NNaEmHOXR5FHMrDcefRHFP95Q0LyaP4QuCHs9hBrNBDd5GS5IGLvyyrRhpNeFnWp5dur+I4yjfW5J7+rs01na/HoOiEfAa5WVA/RevkHb1RybwVk+1N8Dcum5gJC3v+MK6HZkeC3OKKnkd4cXqPVrHy1ndLZx0xbGmyU2gX5/zsG1RBYJ5B1Rzu5S6z0RqNvEidnVK7ZbLlJTFGFTr+hDvaMXhs/b6R23YlthFiRENO2O/ReExVzVxpjdttQN7LkPVfuObNHn8qNiUenuKQoH+FHxRUdNEGbTcdNC9YMxnkNpCZ6tbtPQmq430q5739kB2pyRMtraAO5K10sNJ86S4z87+/bXIFxmxt/0t23d0SepvIfxj3vQF2dAEXizBaUDn1WSicc1BA3m/4lyuZvX6XAYCkuqIH4CxQQ/FGuZH/01HoVj6Y0B26y4/iBI0Us8wJ/wmYmrHoewk0UHJk/Pbx12sbjiSYcc18zaMuap0ES3gFFqtRuotzHC1SpErkb4LothEAWJjyAKwGZKf9KWtn6BgxROJxLMxoKWjQK2wwKpiNDcfIq7V68wPPygdIBIiRbg8xmYrCYS7fkEAAAAAAAAugNB5avHG5gomemNHUXvqnN9Q/uKP2Lf0F+GSe426YDBfUuCJdfrQPYleJgAA";
@@ -355,7 +534,27 @@ h2 {
 }
 
 .card-header h3 {
-  margin:0
+  margin:0;
+  flex:1
+}
+
+.card-toggle {
+  display:block;
+  width:100%;
+  padding:0;
+  border:0;
+  background:none;
+  color:inherit;
+  font:inherit;
+  letter-spacing:inherit;
+  text-align:left;
+  cursor:pointer
+}
+
+.card-toggle:focus-visible {
+  outline:2px solid var(--accent);
+  outline-offset:4px;
+  border-radius:2px
 }
 
 .card-body {
@@ -489,6 +688,109 @@ input[type='date']::-webkit-calendar-picker-indicator {
 input::placeholder {
   color:var(--text2);
   opacity:.7
+}
+
+input[readonly] {
+  opacity:.58;
+  border-style:dashed;
+  cursor:not-allowed
+}
+
+.compatibility-disabled {
+  color:var(--text2);
+  font-size:.78rem
+}
+
+.filter-group-details, .filter-panel {
+  margin:0 0 20px;
+  padding:16px;
+  border:1px solid var(--border);
+  border-radius:8px
+}
+
+.filter-lists {
+  padding:0 0 16px;
+  border:0
+}
+
+.filter-nested {
+  margin:12px 0;
+  padding:8px 16px;
+  border:1px solid var(--border);
+  border-radius:8px
+}
+
+.filter-lists > :first-child {
+  margin-top:0
+}
+
+.filter-lists > :last-child {
+  margin-bottom:0
+}
+
+.filter-nested[open] {
+  padding-bottom:16px
+}
+
+.filter-nested:not([open]) {
+  padding-top:4px;
+  padding-bottom:4px
+}
+
+.filter-nested summary {
+  cursor:pointer;
+  color:var(--text2);
+  font-size:.85rem;
+  font-weight:500;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  list-style:none;
+  min-height:44px;
+  box-sizing:border-box
+}
+
+.filter-nested:not([open]) summary {
+  min-height:40px
+}
+
+.filter-nested summary::-webkit-details-marker {
+  display:none
+}
+
+.filter-nested summary::marker {
+  content:""
+}
+
+.filter-nested summary::before {
+  content:"";
+  width:8px;
+  height:8px;
+  border-right:2px solid currentColor;
+  border-bottom:2px solid currentColor;
+  transform:rotate(-45deg);
+  transition:transform .2s ease;
+  flex-shrink:0
+}
+
+.filter-nested[open] summary::before {
+  transform:rotate(45deg)
+}
+
+.filter-nested[open] > summary {
+  margin-bottom:12px
+}
+
+.filter-group-details .photo-id-row {
+  align-items:center
+}
+
+.filter-group-details .photo-id-fields {
+  grid-template-columns:minmax(0, 2fr) minmax(0, 1fr)
+}
+
+.filter-group-details .photo-id-actions {
+  margin-top:12px
 }
 
 .select, select {
@@ -1210,8 +1512,9 @@ to {
   grid-template-columns:1fr
 }
 
-.photo-id-fields {
-  grid-template-columns:1fr
+.photo-id-fields,
+.filter-group-details .photo-id-fields {
+  grid-template-columns:minmax(0, 1fr)
 }
 
 .photo-id-row-actions {
@@ -1523,7 +1826,7 @@ to {
   }
   function applyConfigurationSnapshot(snapshot) {
     Object.keys(snapshot.values).forEach(function(key) {
-      S[key] = snapshot.values[key];
+      settingSaves.receive(key, snapshot.values[key]);
     });
   }
   function registerManualEntityEndpoints() {
@@ -1567,10 +1870,7 @@ to {
       throw err;
     });
   }
-  var MAX_PHOTO_ID_FIELD_LENGTH = 255;
   var MAX_NTP_SERVER_LENGTH = 253;
-  var PHOTO_ID_FIELD_TOO_LONG = "List exceeds 255 characters (device limit). Remove IDs or shorten the list.";
-  var PHOTO_LABEL_FIELD_TOO_LONG = "Labels exceed 255 characters (device limit). Shorten or remove labels.";
   function postTextValueSet(url, value, useQueryFallback) {
     var body = new URLSearchParams();
     body.set("value", value == null ? "" : String(value));
@@ -1611,43 +1911,46 @@ to {
     return resp && (resp.value || resp.state) || "";
   }
   function saveAndVerifyConnectionValue(path, value, useQueryFallback, isSaved) {
-    return saveConnectionValue(path, value, useQueryFallback).then(function() {
-      return safeGet(path);
-    }).then(function(resp) {
-      var saved = connectionResponseValue(resp);
-      if (isSaved && !isSaved(saved)) throw new Error("verify_failed");
-      return saved;
+    var key = path === endpoints.immich_url ? "immich_url" : "api_key";
+    return settingSaves.save({ [key]: value }, function() {
+      return saveConnectionValue(path, value, useQueryFallback).then(function() {
+        return safeGet(path);
+      }).then(function(resp) {
+        var saved = connectionResponseValue(resp);
+        if (isSaved && !isSaved(saved)) throw new Error("verify_failed");
+        return saved;
+      });
     });
   }
   function saveAndVerifyConnection(url, key) {
     var normalizedUrl = normalizeImmichUrl(url);
     var apiKey = String(key || "").trim();
     if (!normalizedUrl || !apiKey) return Promise.reject(new Error("missing_connection"));
-    return updateConfiguration({ immich_url: normalizedUrl, api_key: apiKey }).then(function() {
-      return delayMs(150);
-    }).then(function() {
-      return getConfigurationSnapshot();
-    }).catch(function(error) {
-      if (!isConfigurationApiUnavailable(error)) throw error;
-      return saveConnectionValue(endpoints.immich_url, normalizedUrl, true).then(function() {
-        return saveConnectionValue(endpoints.api_key, apiKey, false);
+    return settingSaves.save({ immich_url: normalizedUrl, api_key: apiKey }, function() {
+      return updateConfiguration({ immich_url: normalizedUrl, api_key: apiKey }).then(function() {
+        return delayMs(150);
       }).then(function() {
-        return Promise.all([safeGet(endpoints.immich_url), safeGet(endpoints.api_key)]);
+        return getConfigurationSnapshot();
+      }).catch(function(error) {
+        if (!isConfigurationApiUnavailable(error)) throw error;
+        return saveConnectionValue(endpoints.immich_url, normalizedUrl, true).then(function() {
+          return saveConnectionValue(endpoints.api_key, apiKey, false);
+        }).then(function() {
+          return Promise.all([safeGet(endpoints.immich_url), safeGet(endpoints.api_key)]);
+        });
+      }).then(function(result) {
+        var savedUrl;
+        var savedKey;
+        if (result && !Array.isArray(result)) {
+          savedUrl = normalizeImmichUrl(result.values.immich_url);
+          savedKey = String(result.values.api_key || "");
+        } else {
+          savedUrl = normalizeImmichUrl(connectionResponseValue(result[0]));
+          savedKey = connectionResponseValue(result[1]);
+        }
+        if (savedUrl !== normalizedUrl || !savedKey) throw new Error("verify_failed");
+        return { url: normalizedUrl, key: apiKey };
       });
-    }).then(function(result) {
-      var savedUrl;
-      var savedKey;
-      if (result && result.values) {
-        savedUrl = normalizeImmichUrl(result.values.immich_url);
-        savedKey = String(result.values.api_key || "");
-      } else {
-        savedUrl = normalizeImmichUrl(connectionResponseValue(result[0]));
-        savedKey = connectionResponseValue(result[1]);
-      }
-      if (savedUrl !== normalizedUrl || !savedKey) throw new Error("verify_failed");
-      S.immich_url = normalizedUrl;
-      S.api_key = apiKey;
-      return { url: normalizedUrl, key: apiKey };
     });
   }
   var PHOTO_SOURCE_APPLY_SETTING_KEYS = [
@@ -1656,6 +1959,9 @@ to {
     "albums_enabled",
     "people_enabled",
     "tags_enabled",
+    "favorites_enabled",
+    "rating_enabled",
+    "location_enabled",
     "inclusion_matching",
     "album_matching",
     "person_matching",
@@ -1680,6 +1986,40 @@ to {
   function settingUsesPhotoSourceApply(key) {
     return PHOTO_SOURCE_APPLY_SETTING_KEYS.indexOf(key) !== -1;
   }
+  var settingSaves = new SettingSaveCoordinator(
+    function(key) {
+      return S[key];
+    },
+    function(key, value) {
+      S[key] = value;
+    }
+  );
+  Object.keys(S).forEach(function(key) {
+    var value = S[key];
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      settingSaves.receive(key, value);
+    }
+  });
+  function sendLegacySetting(key, savedValue) {
+    var domain = settingEntityDomain(key);
+    if (domain === "switch") return post(endpoints[key] + (savedValue ? "/turn_on" : "/turn_off"));
+    if (domain === "select") return post(endpoints[key] + "/set", { option: savedValue });
+    if (domain === "number") return post(endpoints[key] + "/set", { value: savedValue });
+    if (domain === "text") return postTextValueSet(endpoints[key] + "/set", savedValue);
+    return Promise.resolve(null);
+  }
+  function saveSettingValues(values) {
+    return settingSaves.save(values, function() {
+      return updateConfiguration(values).catch(function(error) {
+        if (!isConfigurationApiUnavailable(error)) throw error;
+        return Object.keys(values).reduce(function(queue, key) {
+          return queue.then(function() {
+            return sendLegacySetting(key, values[key]);
+          });
+        }, Promise.resolve(null));
+      });
+    });
+  }
   function saveGenericSetting(key, value) {
     if (!key || !endpoints[key]) return Promise.resolve(null);
     var domain = settingEntityDomain(key);
@@ -1690,32 +2030,10 @@ to {
       if (isFinite(numberValue)) savedValue = numberValue;
     }
     if (domain === "select" || domain === "text") savedValue = value == null ? "" : String(value);
-    var previousValue = S[key];
-    S[key] = savedValue;
-    var request = updateConfiguration({ [key]: savedValue }).catch(function(error) {
-      if (!isConfigurationApiUnavailable(error)) throw error;
-      if (domain === "switch") return post(endpoints[key] + (savedValue ? "/turn_on" : "/turn_off"));
-      if (domain === "select") return post(endpoints[key] + "/set", { option: savedValue });
-      if (domain === "number") return post(endpoints[key] + "/set", { value: savedValue });
-      if (domain === "text") return postTextValueSet(endpoints[key] + "/set", savedValue);
-      return null;
-    });
-    return Promise.resolve(request).catch(function(err) {
-      S[key] = previousValue;
-      throw err;
-    });
+    return saveSettingValues({ [key]: savedValue });
   }
   function saveNtpServer(key, value) {
-    var server = normalizeNtpServer(value);
-    var previousValue = S[key];
-    S[key] = server;
-    return updateConfiguration({ [key]: server }).catch(function(error) {
-      if (!isConfigurationApiUnavailable(error)) throw error;
-      return postTextValueSet(endpoints[key] + "/set", server);
-    }).catch(function(err) {
-      S[key] = previousValue;
-      throw err;
-    });
+    return saveSettingValues({ [key]: normalizeNtpServer(value) });
   }
   function saveScheduleWakeTimeoutSetting(key, value) {
     return saveGenericSetting(key, normalizeScheduleWakeTimeout(value));
@@ -1723,24 +2041,14 @@ to {
   function saveScreenRotationSetting(key, value) {
     var rotation = String(value);
     if (screenRotationOptionsForUi().indexOf(rotation) === -1) return Promise.resolve(null);
-    var previousRotation = S.screen_rotation;
-    var previousPortraitPairing = S.portrait_pairing;
-    S.screen_rotation = rotation;
-    S.portrait_pairing = !isPortraitScreenRotation(rotation);
-    return updateConfiguration({
+    return saveSettingValues({
       screen_rotation: rotation,
-      portrait_pairing: S.portrait_pairing
-    }).catch(function(error) {
-      if (!isConfigurationApiUnavailable(error)) throw error;
-      return Promise.all([
-        saveGenericSetting("screen_rotation", rotation),
-        saveGenericSetting("portrait_pairing", S.portrait_pairing)
-      ]);
-    }).catch(function(err) {
-      S.screen_rotation = previousRotation;
-      S.portrait_pairing = previousPortraitPairing;
-      throw err;
+      portrait_pairing: !isPortraitScreenRotation(rotation)
     });
+  }
+  function reportSettingSaveFailure() {
+    showBanner("Failed to save setting", "error");
+    renderSettingsAfterEditing();
   }
   var SETTING_SAVE_ADAPTERS = {
     ntp_server_1: saveNtpServer,
@@ -1753,12 +2061,15 @@ to {
     var opts = options || {};
     var adapter = SETTING_SAVE_ADAPTERS[key];
     var result = adapter ? adapter(key, value, opts) : saveGenericSetting(key, value);
-    if (!opts.applyPhotoSource || !settingUsesPhotoSourceApply(key)) return result;
-    return Promise.resolve(result).then(function(saved) {
-      return post(endpoints.apply_photo_source + "/press").then(function() {
-        return saved;
+    if (opts.applyPhotoSource && settingUsesPhotoSourceApply(key)) {
+      result = Promise.resolve(result).then(function(saved) {
+        return post(endpoints.apply_photo_source + "/press").then(function() {
+          return saved;
+        });
       });
-    });
+    }
+    result.catch(reportSettingSaveFailure);
+    return result;
   }
   function makeConnectionUrlField(value) {
     var f = field("Immich Server URL");
@@ -1808,139 +2119,6 @@ to {
     row.appendChild(cb);
     return row;
   }
-  function normalizeNtpServer(value) {
-    return String(value == null ? "" : value).trim();
-  }
-  var LEGACY_DATE_TAKEN_FORMATS = {
-    "January 1, 2000": "January 1, 2026",
-    "January 1, 2026": "January 1, 2026",
-    "Month Day, Year": "January 1, 2026",
-    "Month Day Ordinal, Year": "January 1, 2026"
-  };
-  function normalizeDateTakenFormat(value) {
-    return LEGACY_DATE_TAKEN_FORMATS[value] || "1 January, 2026";
-  }
-  function stripUrlTrailingSlashes(value) {
-    var url = String(value == null ? "" : value);
-    while (url.length > 0 && url.charAt(url.length - 1) === "/" && !/^[a-z][a-z0-9+.-]*:\/\/$/i.test(url)) {
-      url = url.slice(0, -1);
-    }
-    return url;
-  }
-  function isValidHttpUrl(value) {
-    try {
-      var url = new URL(value);
-      return (url.protocol === "http:" || url.protocol === "https:") && !!url.hostname;
-    } catch (_) {
-      return false;
-    }
-  }
-  function extractUrlAuthority(value) {
-    var url = String(value || "");
-    if (url.indexOf("//") === 0) url = url.slice(2);
-    return url.split(/[/?#]/)[0] || "";
-  }
-  function extractUrlHost(value) {
-    var authority = extractUrlAuthority(value);
-    var at = authority.lastIndexOf("@");
-    if (at >= 0) authority = authority.slice(at + 1);
-    if (!authority) return "";
-    if (authority.charAt(0) === "[") {
-      var close = authority.indexOf("]");
-      return (close >= 0 ? authority.slice(0, close + 1) : authority).toLowerCase();
-    }
-    return authority.split(":")[0].toLowerCase();
-  }
-  function extractUrlPort(value) {
-    var authority = extractUrlAuthority(value);
-    var at = authority.lastIndexOf("@");
-    if (at >= 0) authority = authority.slice(at + 1);
-    if (!authority) return "";
-    if (authority.charAt(0) === "[") {
-      var close = authority.indexOf("]");
-      if (close >= 0 && authority.charAt(close + 1) === ":") return authority.slice(close + 2).match(/^\d*/)[0];
-      return "";
-    }
-    var colon = authority.indexOf(":");
-    return colon >= 0 ? authority.slice(colon + 1).match(/^\d*/)[0] : "";
-  }
-  function urlHasExplicitPort(value) {
-    return extractUrlPort(value) !== "";
-  }
-  function isLocalImmichHost(host) {
-    if (!host) return false;
-    if (host === "localhost" || host.charAt(0) === "[") return true;
-    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return true;
-    return host.slice(-6) === ".local" || host.slice(-4) === ".lan";
-  }
-  function normalizeImmichUrl(value) {
-    var url = stripUrlTrailingSlashes(String(value == null ? "" : value).trim());
-    if (!url) return "";
-    if (url.indexOf("//") === 0) {
-      url = "https:" + url;
-    } else if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(url)) {
-      var host = extractUrlHost(url);
-      var port = extractUrlPort(url);
-      var useHttp = isLocalImmichHost(host) || urlHasExplicitPort(url);
-      if (port === "443") useHttp = false;
-      url = (useHttp ? "http://" : "https://") + url;
-    }
-    return stripUrlTrailingSlashes(url.replace(/^([a-z][a-z0-9+.-]*):\/\//i, function(_, scheme) {
-      return scheme.toLowerCase() + "://";
-    }));
-  }
-  function photoIdFieldLengthLimit() {
-    return typeof MAX_PHOTO_ID_FIELD_LENGTH !== "undefined" ? MAX_PHOTO_ID_FIELD_LENGTH : 255;
-  }
-  function photoIdFieldTooLong(s) {
-    return String(s != null ? s : "").trim().length > photoIdFieldLengthLimit();
-  }
-  function photoLabelFieldTooLong(s) {
-    return String(s != null ? s : "").trim().length > photoIdFieldLengthLimit();
-  }
-  var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  function isValidUuidList(str) {
-    var s = str.trim();
-    if (!s) return true;
-    return s.split(",").every(function(id) {
-      return UUID_RE.test(id.trim());
-    });
-  }
-  function splitPhotoIdList(str) {
-    var parts = String(str || "").split(",").map(function(id) {
-      return id.trim();
-    }).filter(Boolean);
-    return parts.length ? parts : [""];
-  }
-  function parsePhotoLabelList(str) {
-    var raw = String(str || "").trim();
-    if (!raw) return [];
-    try {
-      var parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed.map(function(label) {
-        return String(label || "");
-      });
-    } catch (_) {
-    }
-    return raw.split(",").map(function(label) {
-      return label.trim();
-    });
-  }
-  if (typeof module !== "undefined") {
-    module.exports = {
-      extractUrlHost,
-      extractUrlPort,
-      isValidHttpUrl,
-      normalizeImmichUrl,
-      normalizeNtpServer,
-      normalizeDateTakenFormat,
-      parsePhotoLabelList,
-      photoIdFieldTooLong,
-      photoLabelFieldTooLong,
-      splitPhotoIdList,
-      isValidUuidList
-    };
-  }
   function developerPanelEnabledByUrl() {
     try {
       var params = new URLSearchParams(window.location.search || "");
@@ -1986,7 +2164,6 @@ to {
   var rendered = false;
   var renderTimer = null;
   var renderAttemptInFlight = false;
-  var initialSettingsRefreshStarted = false;
   var logListenerAttached = false;
   var ANSI_LEVEL = {
     "1;31": "sp-log-error",
@@ -1997,13 +2174,13 @@ to {
     "0;36": "sp-log-debug",
     "0;37": "sp-log-verbose"
   };
-  var ANSI_RE = /\033\[[\d;]*m/g;
+  var ANSI_RE = /\x1b\[[\d;]*m/g;
   function appendLog(msg, lvl) {
     if (!els.logOutput) return;
     var line = document.createElement("div");
     line.className = "sp-log-line";
     var ansiClass = "";
-    var m = msg.match(/\033\[([\d;]+)m/);
+    var m = msg.match(/\x1b\[([\d;]+)m/);
     if (m) ansiClass = ANSI_LEVEL[m[1]] || "";
     if (ansiClass) {
       line.classList.add(ansiClass);
@@ -2096,28 +2273,30 @@ to {
     var spec = ENTITY_STATE_MAP[id];
     if (!spec) return;
     var v = d.value != null ? d.value : d.state;
+    var received;
     if (spec.boolFromState) {
-      S[spec.key] = v === true || v === "ON";
+      received = v === true || v === "ON";
     } else if (spec.number) {
-      S[spec.key] = v != null ? Math.round(Number(v)) : spec.default !== void 0 ? spec.default : 0;
+      received = v != null ? Math.round(Number(v)) : spec.default !== void 0 ? spec.default : 0;
     } else {
-      S[spec.key] = v !== void 0 && v !== null ? String(v) : spec.default !== void 0 ? spec.default : "";
+      received = v !== void 0 && v !== null ? String(v) : spec.default !== void 0 ? spec.default : "";
     }
-    if (spec.key === "timezone") S[spec.key] = normalizeTimezoneOption(S[spec.key]);
-    if (spec.key && spec.key.indexOf("ntp_server_") === 0) S[spec.key] = normalizeNtpServer(S[spec.key]);
+    if (spec.key === "timezone") received = normalizeTimezoneOption(received);
+    if (spec.key && spec.key.indexOf("ntp_server_") === 0) received = normalizeNtpServer(received);
     if (spec.optionsKey && d.option && d.option.length) S[spec.optionsKey] = d.option;
-    if (spec.key === "photo_metadata_date_format" && S[spec.key] !== "Relative Date" && S[spec.key] !== "Date Taken") {
-      S.photo_metadata_date_taken_format = normalizeDateTakenFormat(S[spec.key]);
-      S[spec.key] = "Date Taken";
+    if (spec.key === "photo_metadata_date_format" && received !== "Relative Date" && received !== "Date Taken") {
+      settingSaves.receive("photo_metadata_date_taken_format", normalizeDateTakenFormat(received));
+      received = "Date Taken";
     }
     if (spec.key === "photo_metadata_date_taken_format") {
-      S[spec.key] = normalizeDateTakenFormat(S[spec.key]);
+      received = normalizeDateTakenFormat(received);
     }
+    settingSaves.receive(spec.key, received);
   }
   function collectState(d) {
     applyEntityToState(d);
   }
-  var INITIAL_FETCH_KEYS = ["firmware_device", "firmware", "photo_source", "album_order", "tag_matching", "date_filter_mode", "relative_unit", "photo_orientation", "display_mode", "interval", "conn_timeout", "screen_rotation", "photo_metadata_date_format", "photo_metadata_date_taken_format", "clock_format", "update_frequency", "auto_update", "c6_auto_update", "date_filter_enabled", "date_from", "date_to", "relative_amount", "schedule_enabled", "schedule_on_hour", "schedule_off_hour", "schedule_wake_timeout", "brightness_day", "brightness_night", "base_tone_enabled", "base_tone", "warm_tones_enabled", "warm_tone_intensity", "warm_tone_override", "portrait_pairing", "portrait_pairing_range", "portrait_pairs_only", "photo_metadata_date_enabled", "photo_metadata_location_enabled", "albums_enabled", "people_enabled", "tags_enabled", "inclusion_matching", "album_matching", "person_matching", "favorite_mode", "minimum_rating", "filter_country", "filter_state", "filter_city", "timezone", "ntp_server_1", "ntp_server_2", "ntp_server_3", "album_ids", "album_labels", "person_ids", "person_labels", "tag_ids", "tag_labels", "excluded_album_ids", "excluded_album_labels", "excluded_person_ids", "excluded_person_labels", "excluded_tag_ids", "excluded_tag_labels", "immich_server_version", "immich_capability_status", "memories_migration_notice", "sunrise", "sunset", "developer_features_enabled", "c6_current_firmware", "c6_available_firmware", "c6_update_status"];
+  var INITIAL_FETCH_KEYS = ["firmware_device", "firmware", "photo_source", "album_order", "tag_matching", "date_filter_mode", "relative_unit", "photo_orientation", "display_mode", "interval", "conn_timeout", "screen_rotation", "photo_metadata_date_format", "photo_metadata_date_taken_format", "clock_format", "update_frequency", "auto_update", "c6_auto_update", "date_filter_enabled", "date_from", "date_to", "relative_amount", "schedule_enabled", "schedule_on_hour", "schedule_off_hour", "schedule_wake_timeout", "brightness_day", "brightness_night", "base_tone_enabled", "base_tone", "warm_tones_enabled", "warm_tone_intensity", "warm_tone_override", "portrait_pairing", "portrait_pairing_range", "portrait_pairs_only", "photo_metadata_date_enabled", "photo_metadata_location_enabled", "albums_enabled", "people_enabled", "tags_enabled", "favorites_enabled", "rating_enabled", "location_enabled", "inclusion_matching", "album_matching", "person_matching", "favorite_mode", "minimum_rating", "filter_country", "filter_state", "filter_city", "timezone", "ntp_server_1", "ntp_server_2", "ntp_server_3", "album_ids", "album_labels", "person_ids", "person_labels", "tag_ids", "tag_labels", "excluded_album_ids", "excluded_album_labels", "excluded_person_ids", "excluded_person_labels", "excluded_tag_ids", "excluded_tag_labels", "immich_server_version", "immich_capability_status", "memories_migration_notice", "sunrise", "sunset", "developer_features_enabled", "c6_current_firmware", "c6_available_firmware", "c6_update_status"];
   function getEntityIdForStateKey(key) {
     var productSpec = PRODUCT_SETTINGS && PRODUCT_SETTINGS[key];
     if (productSpec && typeof productSpec.entity === "string") return productSpec.entity;
@@ -2140,7 +2319,8 @@ to {
     });
   }
   function fetchLegacyDeviceSettingsState() {
-    var urls = INITIAL_FETCH_KEYS.map(function(k) {
+    var legacyKeys = ["immich_url", "api_key"].concat(INITIAL_FETCH_KEYS);
+    var urls = legacyKeys.map(function(k) {
       if (!endpoints[k]) {
         console.error("Missing endpoint for startup setting:", k);
         return Promise.resolve(null);
@@ -2152,7 +2332,7 @@ to {
         var data = res[i];
         if (!data) continue;
         applyEntityToState({
-          id: KEY_TO_ENTITY_ID[INITIAL_FETCH_KEYS[i]],
+          id: getEntityIdForStateKey(legacyKeys[i]),
           value: data.value,
           state: data.state,
           option: data.option
@@ -2160,25 +2340,44 @@ to {
       }
     });
   }
+  function withStartupTimeout(promise, timeoutMs) {
+    var timeoutId;
+    var timeout = new Promise(function(_, reject) {
+      timeoutId = setTimeout(function() {
+        reject(new Error("startup_settings_timeout"));
+      }, timeoutMs);
+    });
+    return Promise.race([promise, timeout]).then(function(value) {
+      clearTimeout(timeoutId);
+      return value;
+    }, function(error) {
+      clearTimeout(timeoutId);
+      throw error;
+    });
+  }
   function isEditingSetting() {
     var active = document.activeElement;
     return !!(active && els.root && els.root.contains(active) && active.matches("input,select,textarea,button"));
   }
-  function renderSettingsAfterEditing() {
-    if (!isEditingSetting()) return renderSettings();
+  var deferredRenderControl = null;
+  function resumeSettingsRenderAfterBlur() {
+    deferredRenderControl = null;
     if (renderTimer) return;
     renderTimer = setTimeout(function() {
       renderTimer = null;
       renderSettingsAfterEditing();
-    }, 100);
+    }, 0);
   }
-  function renderConfiguredSettingsPage() {
-    renderSettings();
-    if (initialSettingsRefreshStarted) return;
-    initialSettingsRefreshStarted = true;
-    fetchDeviceSettingsState().then(function() {
-      if (rendered && !isEditingSetting()) renderSettings();
-    });
+  function renderSettingsAfterEditing() {
+    var active = isEditingSetting() ? document.activeElement : null;
+    if (deferredRenderControl && deferredRenderControl !== active) {
+      deferredRenderControl.removeEventListener("blur", resumeSettingsRenderAfterBlur);
+      deferredRenderControl = null;
+    }
+    if (!active) return renderSettings();
+    if (deferredRenderControl === active) return;
+    deferredRenderControl = active;
+    active.addEventListener("blur", resumeSettingsRenderAfterBlur, { once: true });
   }
   function scheduleTryRender(delayMs2) {
     if (rendered || renderAttemptInFlight || renderTimer) return;
@@ -2190,7 +2389,32 @@ to {
   function showConfiguredSettings() {
     rendered = true;
     renderAttemptInFlight = false;
-    renderConfiguredSettingsPage();
+    renderSettings();
+  }
+  var startupHydrationPromise = null;
+  function getStartupHydration() {
+    if (startupHydrationPromise) return startupHydrationPromise;
+    var hydration = fetchDeviceSettingsState();
+    startupHydrationPromise = hydration;
+    hydration.then(function() {
+      if (startupHydrationPromise === hydration) startupHydrationPromise = null;
+      renderAttemptInFlight = false;
+      if (!rendered) {
+        if (S.immich_url) {
+          showConfiguredSettings();
+        } else {
+          rendered = true;
+          renderWizard();
+        }
+      } else if (S.immich_url) {
+        renderSettingsAfterEditing();
+      }
+    }, function() {
+      if (startupHydrationPromise === hydration) startupHydrationPromise = null;
+      renderAttemptInFlight = false;
+      if (!rendered && !S.immich_url) scheduleTryRender(1e3);
+    });
+    return hydration;
   }
   function tryRender() {
     if (rendered || renderAttemptInFlight) return;
@@ -2198,25 +2422,11 @@ to {
       clearTimeout(renderTimer);
       renderTimer = null;
     }
-    if (S.immich_url) {
-      showConfiguredSettings();
-      return;
-    }
     renderAttemptInFlight = true;
-    getConfigurationSnapshot().then(function(snapshot) {
-      applyConfigurationSnapshot(snapshot);
-      return null;
-    }).catch(function(error) {
-      if (!isConfigurationApiUnavailable(error)) throw error;
-      return Promise.all([
-        safeGet(endpoints.immich_url),
-        safeGet(endpoints.api_key)
-      ]);
-    }).then(function(res) {
+    var hydration = getStartupHydration();
+    withStartupTimeout(hydration, 4e3).then(function() {
       renderAttemptInFlight = false;
       if (rendered) return;
-      if (res && res[0]) S.immich_url = normalizeImmichUrl(res[0].value || res[0].state || "");
-      if (res && res[1]) S.api_key = res[1].value || res[1].state || "";
       if (S.immich_url) {
         showConfiguredSettings();
       } else {
@@ -2225,7 +2435,8 @@ to {
       }
     }).catch(function() {
       renderAttemptInFlight = false;
-      scheduleTryRender(1e3);
+      if (S.immich_url) showConfiguredSettings();
+      else scheduleTryRender(1e3);
     });
   }
   function initSSE() {
@@ -2235,13 +2446,17 @@ to {
         try {
           var d = JSON.parse(e.data);
           if (d && d.name_id) d.id = d.name_id;
+          var spec = d && ENTITY_STATE_MAP[d.id];
+          var previousValue = spec ? S[spec.key] : void 0;
+          var previousOptions = spec && spec.optionsKey ? JSON.stringify(S[spec.optionsKey]) : "";
+          var previousDateTakenFormat = spec && spec.key === "photo_metadata_date_format" ? S.photo_metadata_date_taken_format : void 0;
           collectState(d);
-          if (rendered) handleLiveEvent(d);
+          var changed = !spec || previousValue !== S[spec.key] || spec.optionsKey && previousOptions !== JSON.stringify(S[spec.optionsKey]) || spec.key === "photo_metadata_date_format" && previousDateTakenFormat !== S.photo_metadata_date_taken_format;
+          if (rendered && changed) handleLiveEvent(d);
         } catch (_) {
         }
         if (!rendered) {
-          if (S.immich_url) showConfiguredSettings();
-          else scheduleTryRender(250);
+          scheduleTryRender(250);
         }
       });
       if (!logListenerAttached) {
@@ -2299,6 +2514,7 @@ to {
         s2.className = "step active";
         body.appendChild(renderStep2());
       }
+      connectFieldLabels(body);
     }
     function renderStep1() {
       var card = el("div", "card fade-in");
@@ -2403,8 +2619,7 @@ to {
           return normalizeImmichUrl(saved) === normalized;
         }
       ).then(function() {
-        S.immich_url = normalized;
-        urlInput.value = normalized;
+        if (S.immich_url === normalized) urlInput.value = normalized;
         showSaved("URL saved");
       }).catch(function() {
         showConnectionError("Failed to save URL");
@@ -2419,6 +2634,7 @@ to {
       keyWrap.appendChild(makeMaskedApiKeyRow(function() {
         keyWrap.replaceChildren();
         keyWrap.appendChild(makeKeyInput());
+        connectFieldLabels(f2);
       }));
     }
     function makeKeyInput() {
@@ -2441,7 +2657,6 @@ to {
               return !!saved;
             }
           ).then(function() {
-            S.api_key = v;
             showSaved("API key saved");
             showKeyMasked();
           }).catch(function() {
@@ -2471,12 +2686,33 @@ to {
   }
   function makeSmartPhotoFilterCard() {
     var body = el("div");
+    function filtersActive() {
+      return [
+        "date_filter_enabled",
+        "albums_enabled",
+        "people_enabled",
+        "tags_enabled",
+        "favorites_enabled",
+        "rating_enabled",
+        "location_enabled"
+      ].some(function(key) {
+        return !!S[key];
+      });
+    }
+    var filterBadge = makeBadge(filtersActive());
+    function updateFilterBadge() {
+      setBadgeActive(filterBadge, filtersActive());
+    }
+    appendDateFilterControls(body, updateFilterBadge);
     var version = String(S.immich_server_version || "Unknown");
     var parts = version.split(".").map(Number);
     var supportsStructured = parts.length >= 2 && isFinite(parts[0]) && isFinite(parts[1]) && (parts[0] > 3 || parts[0] === 3 && parts[1] >= 2);
-    var capability = el("div", supportsStructured ? "setting-hint" : "banner warning");
-    capability.textContent = supportsStructured ? "Immich " + version + " \xB7 structured filters available" : "Immich " + version + " \xB7 3.1: Match all + multiple Any people/tags needs 3.2+. Use Match any, All selected, or one ID.";
-    body.appendChild(capability);
+    var compatibilityUpdates = [];
+    function updateCompatibility() {
+      compatibilityUpdates.forEach(function(update) {
+        update();
+      });
+    }
     if (S.memories_migration_notice) {
       var notice = el("div", "banner warning");
       notice.textContent = "Memories was replaced by an empty filter (All Photos). Use date rules to create a similar playlist. ";
@@ -2490,6 +2726,8 @@ to {
       body.appendChild(notice);
     }
     function applySetting(key, value) {
+      updateFilterBadge();
+      updateCompatibility();
       return saveSetting(key, value, { applyPhotoSource: true });
     }
     function addSelect(label, key, disabled, reason, recoveryValue) {
@@ -2526,14 +2764,54 @@ to {
       }
       S[idKey] = ids;
       S[labelKey] = labels;
+      updateCompatibility();
       Promise.all([saveSetting(idKey, ids), saveSetting(labelKey, labels)]).then(function() {
-        post(endpoints.apply_photo_source + "/press");
-      });
+        return post(endpoints.apply_photo_source + "/press");
+      }).catch(reportSettingSaveFailure);
     }
-    function addGroup(label, enabledKey, matchingKey, idKey, labelKey, noun, allMatchingRequiresStructured) {
-      var details = el("div");
-      body.appendChild(toggleSettingRow({
-        label: "Enable " + label,
+    function addExclusions(parent, label, idKey, labelKey, noun) {
+      var nested = document.createElement("details");
+      nested.className = "filter-nested filter-exclusions";
+      nested.open = !!String(S[idKey] || "").trim();
+      var summary = document.createElement("summary");
+      summary.textContent = label;
+      nested.appendChild(summary);
+      var timer = null;
+      var editor = photoIdListField({
+        label: "",
+        idKey,
+        labelKey,
+        idPlaceholder: "Paste excluded " + noun + " UUID",
+        labelPlaceholder: "Optional label",
+        addText: "Exclude " + noun,
+        removeTitle: "Remove exclusion",
+        moveUpTitle: "Move up",
+        moveDownTitle: "Move down",
+        disableEditing: !supportsStructured,
+        allowClearLast: !supportsStructured,
+        idChanges: {},
+        labelChanges: {},
+        clearChanges: {},
+        reorderChanges: {},
+        onChange: function(_changes, delayMs2) {
+          clearTimeout(timer);
+          timer = setTimeout(function() {
+            saveList(editor, idKey, labelKey);
+          }, delayMs2 == null ? 600 : delayMs2);
+        }
+      });
+      nested.appendChild(editor.field);
+      if (!supportsStructured) {
+        var hint = el("div", "setting-hint compatibility-disabled");
+        hint.textContent = "Requires Immich server version 3.2 or newer. Saved exclusions can be removed.";
+        nested.appendChild(hint);
+      }
+      parent.appendChild(nested);
+    }
+    function addGroup(label, enabledKey, idKey, labelKey, noun, options) {
+      var details = el("div", "filter-group-details filter-lists");
+      var row = toggleSettingRow({
+        label: "Filter by " + label,
         value: !!S[enabledKey],
         getValue: function() {
           return !!S[enabledKey];
@@ -2545,25 +2823,43 @@ to {
         onChange: function(value) {
           applySetting(enabledKey, value);
         }
-      }).field);
-      var matching = field(label + " Matching");
-      var matchingControl = selectFromOptions(productSettingOptions(matchingKey), S[matchingKey], function(value) {
-        S[matchingKey] = value;
-        applySetting(matchingKey, value);
       });
-      matching.appendChild(matchingControl);
-      if (allMatchingRequiresStructured && !supportsStructured) {
-        Array.prototype.forEach.call(matchingControl.options, function(optionEl) {
-          if (String(optionEl.value).indexOf("All selected") === 0) optionEl.disabled = true;
-        });
-        var matchingHint = el("div", "setting-hint");
-        matchingHint.textContent = "All selected albums need 3.2+.";
-        matching.appendChild(matchingHint);
+      var toggleClick = row.toggle.onclick;
+      var compatibilityHint = el("div", "setting-hint compatibility-disabled");
+      compatibilityHint.textContent = "Saved exclusions require Immich 3.2 or newer. Remove them below before enabling this group.";
+      row.field.appendChild(compatibilityHint);
+      function updateGroupCompatibility() {
+        var hasUnsupportedExclusions = !supportsStructured && !!String(S[options.excludedIdKey] || "").trim();
+        var blocked = hasUnsupportedExclusions && !S[enabledKey];
+        row.toggle.onclick = blocked ? function() {
+        } : toggleClick;
+        row.toggle.setAttribute("aria-disabled", blocked ? "true" : "false");
+        row.toggle.setAttribute("tabindex", blocked ? "-1" : "0");
+        row.toggle.style.opacity = blocked ? ".35" : "";
+        compatibilityHint.style.display = blocked ? "" : "none";
+        details.style.display = S[enabledKey] || hasUnsupportedExclusions ? "" : "none";
       }
-      details.appendChild(matching);
+      compatibilityUpdates.push(updateGroupCompatibility);
+      body.appendChild(row.field);
+      var inclusionParent = details;
+      if (options && options.includedPanel) {
+        var included = document.createElement("details");
+        included.className = "filter-nested filter-inclusions";
+        included.open = false;
+        var includedSummary = document.createElement("summary");
+        includedSummary.textContent = "Included " + label;
+        included.appendChild(includedSummary);
+        details.appendChild(included);
+        inclusionParent = included;
+      }
+      if (!options || options.showInclusionHint !== false) {
+        var hint = el("div", "setting-hint");
+        hint.textContent = "Any selected " + noun + " is included.";
+        inclusionParent.appendChild(hint);
+      }
       var timer = null;
       var editor = photoIdListField({
-        label,
+        label: "Selected " + label,
         idKey,
         labelKey,
         idPlaceholder: "Paste " + noun + " UUID from Immich",
@@ -2583,347 +2879,146 @@ to {
           }, delayMs2 == null ? 600 : delayMs2);
         }
       });
-      details.appendChild(editor.field);
+      inclusionParent.appendChild(editor.field);
+      var matchingKey = noun + "_matching";
+      if (String(S[matchingKey] || "").indexOf("All selected") === 0) {
+        inclusionParent.appendChild(addSelect(
+          "Matching " + label,
+          matchingKey,
+          !supportsStructured,
+          "Choose any selected item to clear the retained all-selected rule.",
+          "Any selected " + noun
+        ));
+      }
+      addExclusions(details, "Excluded " + label, options.excludedIdKey, options.excludedLabelKey, noun);
+      if (options && options.order) {
+        var order = productSelectSettingField("Album Order", "album_order");
+        order.classList.add("filter-panel");
+        details.appendChild(order);
+      }
+      updateGroupCompatibility();
+      body.appendChild(details);
+    }
+    addGroup("Albums", "albums_enabled", "album_ids", "album_labels", "album", {
+      order: true,
+      excludedIdKey: "excluded_album_ids",
+      excludedLabelKey: "excluded_album_labels",
+      includedPanel: true,
+      showInclusionHint: false
+    });
+    addGroup("People", "people_enabled", "person_ids", "person_labels", "person", {
+      excludedIdKey: "excluded_person_ids",
+      excludedLabelKey: "excluded_person_labels",
+      includedPanel: true,
+      showInclusionHint: false
+    });
+    addGroup("Tags", "tags_enabled", "tag_ids", "tag_labels", "tag", {
+      excludedIdKey: "excluded_tag_ids",
+      excludedLabelKey: "excluded_tag_labels",
+      includedPanel: true,
+      showInclusionHint: false
+    });
+    if (!supportsStructured) {
+      var inclusionRecovery = addSelect("Inclusion Groups", "inclusion_matching", false, "");
+      var inclusionHint = el("div", "setting-hint compatibility-disabled");
+      inclusionHint.textContent = "Matching all enabled groups with multiple any-selected people or tags requires Immich 3.2 or newer. Choose Match any enabled group, keep only one group enabled, or reduce the people and tag lists to one item.";
+      inclusionRecovery.appendChild(inclusionHint);
+    }
+    function addValueGroup(label, enabledKey, settingKey, defaultValue, disabled, reason) {
+      var details = el("div", "filter-group-details");
+      var valueField = addSelect(label, settingKey, disabled, reason, "Any");
+      var valueControl = valueField.querySelector("select");
+      var row = toggleSettingRow({
+        label: "Filter by " + label,
+        value: !!S[enabledKey],
+        disabled: disabled && !S[enabledKey],
+        disabledTitle: reason,
+        getValue: function() {
+          return !!S[enabledKey];
+        },
+        setValue: function(value) {
+          S[enabledKey] = value;
+        },
+        details,
+        onChange: function(value) {
+          if (value && (S[settingKey] == null || S[settingKey] === "Any")) {
+            S[settingKey] = defaultValue;
+            valueControl.value = defaultValue;
+            saveSetting(settingKey, defaultValue);
+          }
+          applySetting(enabledKey, value);
+          if (disabled && !value) {
+            row.toggle.onclick = function() {
+            };
+            row.toggle.setAttribute("aria-disabled", "true");
+            row.toggle.setAttribute("tabindex", "-1");
+            row.toggle.style.opacity = ".35";
+          }
+        }
+      });
+      body.appendChild(row.field);
+      details.appendChild(valueField);
       details.style.display = S[enabledKey] ? "" : "none";
       body.appendChild(details);
     }
-    addSelect("Inclusion Groups", "inclusion_matching", false, "");
-    addGroup("Albums", "albums_enabled", "album_matching", "album_ids", "album_labels", "album", true);
-    addSelect("Album Order", "album_order", false, "");
-    addGroup("People", "people_enabled", "person_matching", "person_ids", "person_labels", "person");
-    addGroup("Tags", "tags_enabled", "tag_matching", "tag_ids", "tag_labels", "tag");
-    addSelect("Favorites", "favorite_mode", false, "");
-    addSelect(
-      "Minimum Rating",
+    addValueGroup("Favorites", "favorites_enabled", "favorite_mode", "Favorites only", false, "");
+    addValueGroup(
+      "Rating",
+      "rating_enabled",
       "minimum_rating",
+      "1+",
       !supportsStructured,
-      "Rating needs 3.2+. Choose Any to clear.",
-      "Any"
+      "Requires Immich server version 3.2 or newer. Choose Any to clear."
     );
-    [
-      ["Country", "filter_country"],
-      ["State / Province", "filter_state"],
-      ["City", "filter_city"]
-    ].forEach(function(spec, index) {
+    var locationDetails = el("div", "filter-group-details");
+    var locationRow = toggleSettingRow({
+      label: "Filter by Location",
+      value: !!S.location_enabled,
+      getValue: function() {
+        return !!S.location_enabled;
+      },
+      setValue: function(value) {
+        S.location_enabled = value;
+      },
+      details: locationDetails,
+      onChange: function(value) {
+        applySetting("location_enabled", value);
+      }
+    });
+    body.appendChild(locationRow.field);
+    [["Country", "filter_country"], ["State / Province", "filter_state"], ["City", "filter_city"]].forEach(function(spec, index) {
       var f = field(spec[0]);
       var inputEl = input("text", S[spec[1]] || "", "Exact Immich value", productTextMaxLength(spec[1], 96));
+      var hint = el("div", "setting-hint");
+      if (index === 1) hint.textContent = "Enter a country first.";
+      if (index === 2) hint.textContent = "Enter a country and state or province first.";
       var timer = null;
       inputEl.oninput = function() {
         var nextValue = inputEl.value.trim();
-        if (nextValue && index > 0 && !String((index === 1 ? S.filter_country : S.filter_state) || "").trim()) {
-          inputEl.setCustomValidity(index === 1 ? "Set country first" : "Set state or province first");
+        var parentValue = index === 1 ? S.filter_country : S.filter_state;
+        if (nextValue && index > 0 && !String(parentValue || "").trim()) {
+          inputEl.setCustomValidity(index === 1 ? "Enter a country first" : "Enter a state or province first");
           return;
         }
         inputEl.setCustomValidity("");
         clearTimeout(timer);
         timer = setTimeout(function() {
           S[spec[1]] = nextValue;
-          applySetting(spec[1], S[spec[1]]);
+          applySetting(spec[1], nextValue);
         }, 600);
       };
       f.appendChild(inputEl);
-      body.appendChild(f);
+      f.appendChild(hint);
+      locationDetails.appendChild(f);
     });
-    var exclusionReason = "3.2+ needed to add exclusions; saved ones can be removed.";
-    [
-      ["Excluded Albums", "excluded_album_ids", "excluded_album_labels", "album"],
-      ["Excluded People", "excluded_person_ids", "excluded_person_labels", "person"],
-      ["Excluded Tags", "excluded_tag_ids", "excluded_tag_labels", "tag"]
-    ].forEach(function(spec) {
-      var timer = null;
-      var editor = photoIdListField({
-        label: spec[0],
-        idKey: spec[1],
-        labelKey: spec[2],
-        idPlaceholder: "Paste excluded " + spec[3] + " UUID",
-        labelPlaceholder: "Optional label",
-        addText: "Exclude " + spec[3],
-        removeTitle: "Remove exclusion",
-        moveUpTitle: "Move up",
-        moveDownTitle: "Move down",
-        disableEditing: !supportsStructured,
-        allowClearLast: !supportsStructured,
-        idChanges: {},
-        labelChanges: {},
-        clearChanges: {},
-        reorderChanges: {},
-        onChange: function(_changes, delayMs2) {
-          clearTimeout(timer);
-          timer = setTimeout(function() {
-            saveList(editor, spec[1], spec[2]);
-          }, delayMs2 == null ? 600 : delayMs2);
-        }
-      });
-      if (!supportsStructured) {
-        var hint = el("div", "setting-hint");
-        hint.textContent = exclusionReason;
-        editor.field.appendChild(hint);
-      }
-      body.appendChild(editor.field);
-    });
-    return makeCollapsibleCard("Photo Filter", body, true);
+    locationDetails.style.display = S.location_enabled ? "" : "none";
+    body.appendChild(locationDetails);
+    return makeCollapsibleCard("Photo Filter", body, true, filterBadge);
   }
   function makePhotoSourceCard() {
     return makeSmartPhotoFilterCard();
   }
-  function makeLegacyPhotoSourceCard() {
-    var srcBody = el("div");
-    var photoSourceApplyTimer = null;
-    var pendingPhotoSourceSave = {
-      source: false,
-      album: false,
-      albumLabel: false,
-      albumOrder: false,
-      person: false,
-      personLabel: false,
-      tag: false,
-      tagLabel: false,
-      tagMatching: false
-    };
-    var fSrc = field("Source");
-    var srcSel = selectFromOptions(productSettingOptions("photo_source"), S.photo_source, function(v) {
-      S.photo_source = v;
-      albumField.style.display = v === "Album" ? "" : "none";
-      albumOrderField.style.display = v === "Album" ? "" : "none";
-      personField.style.display = v === "Person" ? "" : "none";
-      tagField.style.display = v === "Tag" ? "" : "none";
-      tagMatchingField.style.display = v === "Tag" ? "" : "none";
-      schedulePhotoSourceApply(0, { source: true });
-    });
-    var albumOrderField = field("Album Order");
-    albumOrderField.appendChild(
-      selectFromOptions(productSettingOptions("album_order"), S.album_order, function(v) {
-        S.album_order = v;
-        schedulePhotoSourceApply(0, { albumOrder: true });
-      })
-    );
-    albumOrderField.style.display = S.photo_source === "Album" ? "" : "none";
-    var albumList = photoIdListField({
-      label: "Albums",
-      idKey: "album_ids",
-      labelKey: "album_labels",
-      idPlaceholder: "Paste album ID from Immich URL",
-      labelPlaceholder: "What is it?",
-      addText: "Add an album",
-      removeTitle: "Remove album ID",
-      moveUpTitle: "Move album up",
-      moveDownTitle: "Move album down",
-      idChanges: { album: true, albumLabel: true },
-      labelChanges: { albumLabel: true },
-      clearChanges: { album: true, albumLabel: true },
-      reorderChanges: { album: true, albumLabel: true },
-      onChange: function(changes, delayMs2) {
-        schedulePhotoSourceApply(delayMs2, changes);
-      }
-    });
-    var albumField = albumList.field;
-    albumField.style.display = S.photo_source === "Album" ? "" : "none";
-    var personList = photoIdListField({
-      label: "People",
-      idKey: "person_ids",
-      labelKey: "person_labels",
-      idPlaceholder: "Paste person ID from Immich URL",
-      labelPlaceholder: "Who is it?",
-      addText: "Add a person",
-      removeTitle: "Remove person ID",
-      moveUpTitle: "Move person up",
-      moveDownTitle: "Move person down",
-      idChanges: { person: true, personLabel: true },
-      labelChanges: { personLabel: true },
-      clearChanges: { person: true, personLabel: true },
-      reorderChanges: { person: true, personLabel: true },
-      onChange: function(changes, delayMs2) {
-        schedulePhotoSourceApply(delayMs2, changes);
-      }
-    });
-    var personField = personList.field;
-    personField.style.display = S.photo_source === "Person" ? "" : "none";
-    var tagList = photoIdListField({
-      label: "Tags",
-      idKey: "tag_ids",
-      labelKey: "tag_labels",
-      idPlaceholder: "Paste tag ID from Immich URL",
-      labelPlaceholder: "What tag is it?",
-      addText: "Add a tag",
-      removeTitle: "Remove tag ID",
-      moveUpTitle: "Move tag up",
-      moveDownTitle: "Move tag down",
-      idChanges: { tag: true, tagLabel: true },
-      labelChanges: { tagLabel: true },
-      clearChanges: { tag: true, tagLabel: true },
-      reorderChanges: { tag: true, tagLabel: true },
-      onChange: function(changes, delayMs2) {
-        schedulePhotoSourceApply(delayMs2, changes);
-      }
-    });
-    var tagField = tagList.field;
-    tagField.style.display = S.photo_source === "Tag" ? "" : "none";
-    var tagMatchingField = field("Tag Matching");
-    tagMatchingField.appendChild(
-      selectFromOptions(productSettingOptions("tag_matching"), S.tag_matching, function(v) {
-        S.tag_matching = v;
-        schedulePhotoSourceApply(0, { tagMatching: true });
-      })
-    );
-    tagMatchingField.style.display = S.photo_source === "Tag" ? "" : "none";
-    function validatePhotoSourceInputs(changes) {
-      albumList.error.textContent = "";
-      personList.error.textContent = "";
-      tagList.error.textContent = "";
-      var srcVal = srcSel.value;
-      var albumTrim = albumList.getIdsValue();
-      var albumLabels = albumList.getLabelsValue();
-      var personTrim = personList.getIdsValue();
-      var personLabels = personList.getLabelsValue();
-      var tagTrim = tagList.getIdsValue();
-      var tagLabels = tagList.getLabelsValue();
-      var shouldValidateAlbum = changes.album || srcVal === "Album";
-      var shouldValidatePerson = changes.person || srcVal === "Person";
-      var shouldValidateTag = changes.tag || srcVal === "Tag";
-      if (shouldValidateAlbum && photoIdFieldTooLong(albumTrim)) {
-        albumList.error.textContent = PHOTO_ID_FIELD_TOO_LONG;
-        return null;
-      }
-      if (shouldValidatePerson && photoIdFieldTooLong(personTrim)) {
-        personList.error.textContent = PHOTO_ID_FIELD_TOO_LONG;
-        return null;
-      }
-      if (shouldValidateTag && photoIdFieldTooLong(tagTrim)) {
-        tagList.error.textContent = PHOTO_ID_FIELD_TOO_LONG;
-        return null;
-      }
-      if (srcVal === "Album" && !albumTrim) {
-        albumList.error.textContent = "Add at least one album";
-        return null;
-      }
-      if (srcVal === "Person" && !personTrim) {
-        personList.error.textContent = "Add at least one person";
-        return null;
-      }
-      if (srcVal === "Tag" && !tagTrim) {
-        tagList.error.textContent = "Add at least one tag";
-        return null;
-      }
-      if (shouldValidateAlbum && !isValidUuidList(albumTrim)) {
-        albumList.error.textContent = "Invalid UUID format";
-        return null;
-      }
-      if (changes.albumLabel && photoLabelFieldTooLong(albumLabels)) {
-        albumList.error.textContent = PHOTO_LABEL_FIELD_TOO_LONG;
-        return null;
-      }
-      if (shouldValidatePerson && !isValidUuidList(personTrim)) {
-        personList.error.textContent = "Invalid UUID format";
-        return null;
-      }
-      if (changes.personLabel && photoLabelFieldTooLong(personLabels)) {
-        personList.error.textContent = PHOTO_LABEL_FIELD_TOO_LONG;
-        return null;
-      }
-      if (shouldValidateTag && !isValidUuidList(tagTrim)) {
-        tagList.error.textContent = "Invalid UUID format";
-        return null;
-      }
-      if (changes.tagLabel && photoLabelFieldTooLong(tagLabels)) {
-        tagList.error.textContent = PHOTO_LABEL_FIELD_TOO_LONG;
-        return null;
-      }
-      return {
-        source: srcVal,
-        albumOrder: S.album_order,
-        albumIds: albumTrim,
-        albumLabels,
-        personIds: personTrim,
-        personLabels,
-        tagIds: tagTrim,
-        tagLabels,
-        tagMatching: S.tag_matching
-      };
-    }
-    function applyPhotoSourceInputs() {
-      var changes = {
-        source: pendingPhotoSourceSave.source,
-        album: pendingPhotoSourceSave.album,
-        albumLabel: pendingPhotoSourceSave.albumLabel,
-        albumOrder: pendingPhotoSourceSave.albumOrder,
-        person: pendingPhotoSourceSave.person,
-        personLabel: pendingPhotoSourceSave.personLabel,
-        tag: pendingPhotoSourceSave.tag,
-        tagLabel: pendingPhotoSourceSave.tagLabel,
-        tagMatching: pendingPhotoSourceSave.tagMatching
-      };
-      var vals = validatePhotoSourceInputs(changes);
-      if (!vals) return;
-      pendingPhotoSourceSave = {
-        source: false,
-        album: false,
-        albumLabel: false,
-        albumOrder: false,
-        person: false,
-        personLabel: false,
-        tag: false,
-        tagLabel: false,
-        tagMatching: false
-      };
-      var requests = [];
-      if (changes.source) {
-        requests.push(saveSetting("photo_source", vals.source));
-      }
-      if (changes.album) {
-        requests.push(saveSetting("album_ids", vals.albumIds));
-      }
-      if (changes.albumLabel) {
-        requests.push(saveSetting("album_labels", vals.albumLabels));
-      }
-      if (changes.albumOrder) {
-        requests.push(saveSetting("album_order", vals.albumOrder));
-      }
-      if (changes.person) {
-        requests.push(saveSetting("person_ids", vals.personIds));
-      }
-      if (changes.personLabel) {
-        requests.push(saveSetting("person_labels", vals.personLabels));
-      }
-      if (changes.tag) {
-        requests.push(saveSetting("tag_ids", vals.tagIds));
-      }
-      if (changes.tagLabel) {
-        requests.push(saveSetting("tag_labels", vals.tagLabels));
-      }
-      if (changes.tagMatching) {
-        requests.push(saveSetting("tag_matching", vals.tagMatching));
-      }
-      if (!requests.length) return;
-      Promise.all(requests).then(function() {
-        if (changes.source || changes.album || changes.albumOrder || changes.person || changes.tag || changes.tagMatching)
-          post(endpoints.apply_photo_source + "/press");
-      });
-    }
-    function schedulePhotoSourceApply(delayMs2, changes) {
-      if (changes) {
-        pendingPhotoSourceSave.source = pendingPhotoSourceSave.source || !!changes.source;
-        pendingPhotoSourceSave.album = pendingPhotoSourceSave.album || !!changes.album;
-        pendingPhotoSourceSave.albumLabel = pendingPhotoSourceSave.albumLabel || !!changes.albumLabel;
-        pendingPhotoSourceSave.albumOrder = pendingPhotoSourceSave.albumOrder || !!changes.albumOrder;
-        pendingPhotoSourceSave.person = pendingPhotoSourceSave.person || !!changes.person;
-        pendingPhotoSourceSave.personLabel = pendingPhotoSourceSave.personLabel || !!changes.personLabel;
-        pendingPhotoSourceSave.tag = pendingPhotoSourceSave.tag || !!changes.tag;
-        pendingPhotoSourceSave.tagLabel = pendingPhotoSourceSave.tagLabel || !!changes.tagLabel;
-        pendingPhotoSourceSave.tagMatching = pendingPhotoSourceSave.tagMatching || !!changes.tagMatching;
-      }
-      clearTimeout(photoSourceApplyTimer);
-      photoSourceApplyTimer = setTimeout(applyPhotoSourceInputs, delayMs2 == null ? 600 : delayMs2);
-    }
-    fSrc.appendChild(srcSel);
-    srcBody.appendChild(fSrc);
-    srcBody.appendChild(albumOrderField);
-    srcBody.appendChild(albumField);
-    srcBody.appendChild(personField);
-    srcBody.appendChild(tagField);
-    srcBody.appendChild(tagMatchingField);
-    return makeCollapsibleCard("Photo Source", srcBody, true);
-  }
-  function makeAdvancedFiltersCard() {
+  function appendDateFilterControls(parent, onEnabledChange) {
     var DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
     function isValidDate(s) {
       if (!DATE_RE.test(s)) return false;
@@ -2931,15 +3026,10 @@ to {
       var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
       return d.getFullYear() === Number(parts[0]) && d.getMonth() === Number(parts[1]) - 1 && d.getDate() === Number(parts[2]);
     }
-    function isFilterActive(enabled) {
-      return !!enabled;
-    }
-    var filterBadge = makeBadge(isFilterActive(S.date_filter_enabled));
-    var filterBody = el("div");
+    var filterBody = el("div", "filter-group-details");
     var filterApplyTimer = null;
     var filterDetails = el("div");
-    filterDetails.style.display = S.date_filter_enabled ? "" : "none";
-    filterBody.appendChild(toggleSettingRow({
+    var filterToggle = toggleSettingRow({
       label: "Filter by Date",
       value: S.date_filter_enabled,
       getValue: function() {
@@ -2948,13 +3038,13 @@ to {
       setValue: function(value) {
         S.date_filter_enabled = value;
       },
-      details: filterDetails,
-      badge: filterBadge,
-      badgeActive: function() {
-        return isFilterActive(S.date_filter_enabled);
-      },
-      onChange: scheduleFilterApply
-    }).field);
+      details: filterBody,
+      onChange: function() {
+        if (onEnabledChange) onEnabledChange();
+        scheduleFilterApply();
+      }
+    });
+    parent.appendChild(filterToggle.field);
     var fFilterMode = field("Mode");
     var modeVal = S.date_filter_mode;
     var modeSegment = segmentedControl(productSettingOptions("date_filter_mode"), modeVal, function(v) {
@@ -3055,7 +3145,6 @@ to {
       S.date_to = vals.to;
       S.relative_amount = vals.amount;
       S.relative_unit = vals.unit;
-      filterBadge.className = "on-badge" + (isFilterActive(S.date_filter_enabled) ? " active" : "");
       Promise.all([
         saveSetting("date_filter_enabled", S.date_filter_enabled),
         saveSetting("date_filter_mode", modeVal),
@@ -3064,21 +3153,24 @@ to {
         saveSetting("relative_amount", vals.amount),
         saveSetting("relative_unit", vals.unit)
       ]).then(function() {
-        post(endpoints.apply_photo_source + "/press");
-      });
+        return post(endpoints.apply_photo_source + "/press");
+      }).catch(reportSettingSaveFailure);
     }
     function scheduleFilterApply() {
       clearTimeout(filterApplyTimer);
       filterApplyTimer = setTimeout(applyFilterSettings, 300);
     }
     filterBody.appendChild(filterDetails);
-    return makeCollapsibleCard("Advanced Filters", filterBody, true, filterBadge);
+    filterBody.style.display = S.date_filter_enabled ? "" : "none";
+    parent.appendChild(filterBody);
   }
-  function makeLayoutCard() {
-    var photoBody = el("div");
+  function makePortraitPairingCard() {
+    var pairingBody = el("div");
     var portraitRotationActive = isPortraitScreenRotation(effectiveScreenRotationForUi());
     var pairingEnabled = S.portrait_pairing && !portraitRotationActive;
-    photoBody.appendChild(toggleSettingRow({
+    var pairingOptionsBody = el("div", "portrait-pairing-options");
+    var pairingBadge = makeBadge(pairingEnabled);
+    var pairingToggle = toggleSettingRow({
       label: "Portrait Pairing",
       value: pairingEnabled,
       getValue: function() {
@@ -3090,10 +3182,27 @@ to {
       disabled: portraitRotationActive,
       disabledTitle: "Portrait pairing is disabled while the screen is in portrait rotation",
       onChange: function() {
+        pairingOptionsBody.style.display = S.portrait_pairing && !portraitRotationActive ? "" : "none";
+        setBadgeActive(pairingBadge, S.portrait_pairing && !portraitRotationActive);
         saveSetting("portrait_pairing", S.portrait_pairing);
       }
-    }).field);
+    });
     var pairingOptionsDisabledTitle = portraitRotationActive ? "Portrait pairing is disabled while the screen is in portrait rotation" : "Turn on Portrait Pairing to use this option";
+    pairingOptionsBody.appendChild(toggleSettingRow({
+      label: "Show Paired Portraits Only",
+      value: S.portrait_pairs_only,
+      getValue: function() {
+        return S.portrait_pairs_only;
+      },
+      setValue: function(value) {
+        S.portrait_pairs_only = value;
+      },
+      disabled: portraitRotationActive,
+      disabledTitle: pairingOptionsDisabledTitle,
+      onChange: function() {
+        saveSetting("portrait_pairs_only", S.portrait_pairs_only);
+      }
+    }).field);
     var fPairingRange = field("Pairing Range");
     var pairingRangeSelect = selectFromOptions(
       productSettingOptions("portrait_pairing_range"),
@@ -3107,26 +3216,19 @@ to {
         return v;
       }
     );
-    pairingRangeSelect.disabled = !pairingEnabled;
-    if (!pairingEnabled) pairingRangeSelect.title = pairingOptionsDisabledTitle;
+    pairingRangeSelect.disabled = portraitRotationActive;
+    if (portraitRotationActive) pairingRangeSelect.title = pairingOptionsDisabledTitle;
     fPairingRange.appendChild(pairingRangeSelect);
-    photoBody.appendChild(fPairingRange);
-    photoBody.appendChild(toggleSettingRow({
-      label: "Paired Portraits Only",
-      value: S.portrait_pairs_only,
-      getValue: function() {
-        return S.portrait_pairs_only;
-      },
-      setValue: function(value) {
-        S.portrait_pairs_only = value;
-      },
-      disabled: !pairingEnabled,
-      disabledTitle: pairingOptionsDisabledTitle,
-      onChange: function() {
-        saveSetting("portrait_pairs_only", S.portrait_pairs_only);
-      }
-    }).field);
-    var fPhotoOrientation = field("Photo Orientation");
+    pairingOptionsBody.appendChild(fPairingRange);
+    pairingBody.appendChild(pairingToggle.field);
+    pairingOptionsBody.style.display = pairingEnabled ? "" : "none";
+    pairingBody.appendChild(pairingOptionsBody);
+    var pairingCard = makeCollapsibleCard("Portrait Pairing", pairingBody, true, pairingBadge);
+    return pairingCard;
+  }
+  function makeLayoutCard() {
+    var photoBody = el("div");
+    var fPhotoOrientation = field("Display Photos");
     fPhotoOrientation.appendChild(
       selectFromOptions(productSettingOptions("photo_orientation"), S.photo_orientation, function(v) {
         saveSetting("photo_orientation", v);
@@ -3137,10 +3239,12 @@ to {
     fDisplayMode.appendChild(
       selectFromOptions(productSettingOptions("display_mode"), S.display_mode, function(v) {
         saveSetting("display_mode", v);
+      }, function(v) {
+        return v === "Fill" ? "Crop to fit" : "Show full image";
       })
     );
     photoBody.appendChild(fDisplayMode);
-    return makeCollapsibleCard("Layout", photoBody, true);
+    return makeCollapsibleCard("Photo Display", photoBody, true);
   }
   function makeMetadataCard() {
     function metadataIsActive() {
@@ -3827,9 +3931,7 @@ to {
         S.auto_update = value;
       },
       onChange: function() {
-        saveSetting("auto_update", S.auto_update).catch(function() {
-          S.auto_update = !S.auto_update;
-        });
+        saveSetting("auto_update", S.auto_update);
         refreshFirmwareUi();
       }
     });
@@ -3867,9 +3969,7 @@ to {
         S.c6_auto_update = value;
       },
       onChange: function() {
-        saveSetting("c6_auto_update", S.c6_auto_update).catch(function() {
-          S.c6_auto_update = !S.c6_auto_update;
-        });
+        saveSetting("c6_auto_update", S.c6_auto_update);
         refreshC6FirmwareUi();
       }
     });
@@ -3996,7 +4096,7 @@ to {
       makeConnectionCard,
       makeFrequencyCard,
       makePhotoSourceCard,
-      makeAdvancedFiltersCard,
+      makePortraitPairingCard,
       makeLayoutCard,
       makeMetadataCard,
       makeScreenBrightnessCard,
@@ -4053,15 +4153,15 @@ to {
   function renderSettings() {
     app.replaceChildren();
     immichApp.replaceChildren();
-    var immichWrap = el("div", "fade-in");
-    var wrap = el("div", "fade-in");
+    var immichWrap = el("div");
+    var wrap = el("div");
     var immichCards = renderSettingsCardsForTab("immich");
     var settingsCardEntries = renderSettingsCardEntriesForTab("settings");
     if (!immichCards.length) immichCards = [
       makeConnectionCard(),
       makeFrequencyCard(),
+      makePortraitPairingCard(),
       makePhotoSourceCard(),
-      makeAdvancedFiltersCard(),
       makeLayoutCard(),
       makeMetadataCard()
     ];
@@ -4080,6 +4180,8 @@ to {
     ];
     appendSettingsSections(wrap, settingsCardEntries);
     app.appendChild(wrap);
+    connectFieldLabels(app);
+    connectFieldLabels(immichApp);
   }
   function handleLiveEvent(d) {
     if (!d || !d.id) return;
@@ -4102,7 +4204,7 @@ to {
         S.brightness_current = S.brightness;
       }
     } else if (id === "switch/Clock: Show") {
-      S.show_clock = d.state === "ON" || d.value === true;
+      settingSaves.receive("show_clock", d.state === "ON" || d.value === true);
     } else if (id === "text_sensor/Screen: Sunrise") {
       S.sunrise = d.value || d.state || "";
       updateSunInfoElement(document.getElementById("sun-info"));
@@ -4143,7 +4245,7 @@ to {
     var fallback = PRODUCT_SETTINGS && PRODUCT_SETTINGS.schedule_wake_timeout && PRODUCT_SETTINGS.schedule_wake_timeout.default !== void 0 ? PRODUCT_SETTINGS.schedule_wake_timeout.default : 60;
     var min = productNumberMin("schedule_wake_timeout", 10);
     var max = productNumberMax("schedule_wake_timeout", 3600);
-    if (!seconds) seconds = fallback;
+    if (!seconds) seconds = Number(fallback);
     if (seconds < min) seconds = min;
     if (seconds > max) seconds = max;
     return seconds;
@@ -4272,11 +4374,7 @@ to {
     disclosureButton.appendChild(rightWrap);
     var body = el("div", "inline-disclosure-body");
     body.appendChild(bodyElement);
-    disclosureButton.onclick = function() {
-      var open = !panel.classList.contains("open");
-      panel.classList.toggle("open", open);
-      disclosureButton.setAttribute("aria-expanded", open ? "true" : "false");
-    };
+    bindDisclosure(disclosureButton, panel, body, "open", true);
     panel.appendChild(disclosureButton);
     panel.appendChild(body);
     return panel;
@@ -4337,6 +4435,10 @@ to {
       opts.value = value;
     };
     var toggle = el("div", opts.value ? "toggle on" : "toggle");
+    toggle.setAttribute("role", "switch");
+    toggle.setAttribute("tabindex", opts.disabled ? "-1" : "0");
+    toggle.setAttribute("aria-checked", opts.value ? "true" : "false");
+    toggle.setAttribute("aria-label", opts.label || "Toggle setting");
     if (opts.disabled) {
       toggle.style.opacity = ".35";
       toggle.style.cursor = "not-allowed";
@@ -4347,9 +4449,16 @@ to {
       var next = !getValue();
       setValue(next);
       toggle.className = next ? "toggle on" : "toggle";
+      toggle.setAttribute("aria-checked", next ? "true" : "false");
       if (opts.details) opts.details.style.display = next ? "" : "none";
       if (opts.badge) setBadgeActive(opts.badge, opts.badgeActive ? opts.badgeActive() : next);
       if (opts.onChange) opts.onChange(next);
+    };
+    toggle.onkeydown = function(event) {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        toggle.click();
+      }
     };
     row.appendChild(label);
     row.appendChild(toggle);
@@ -4447,6 +4556,7 @@ to {
         list.insertBefore(rows[toIndex], row);
       }
       refreshRowButtons();
+      connectFieldLabels(f);
       notify(opts.reorderChanges, 0);
     }
     function addRow(value, labelValue) {
@@ -4493,6 +4603,7 @@ to {
         labelInputs.splice(removeIndex, 1);
         row.parentNode.removeChild(row);
         refreshRowButtons();
+        connectFieldLabels(f);
         notify(opts.clearChanges, 0);
       };
       idInput.oninput = function() {
@@ -4543,11 +4654,36 @@ to {
       }
     };
   }
+  var controlId = 0;
+  function bindDisclosure(toggle, panel, body, className, expandedWhenPresent) {
+    if (!body.id) body.id = "disclosure-" + ++controlId;
+    toggle.setAttribute("aria-controls", body.id);
+    function syncExpanded() {
+      toggle.setAttribute("aria-expanded", String(panel.classList.contains(className) === expandedWhenPresent));
+    }
+    syncExpanded();
+    toggle.onclick = function(event) {
+      event.stopPropagation();
+      panel.classList.toggle(className);
+      syncExpanded();
+    };
+  }
+  function connectFieldLabels(root) {
+    root.querySelectorAll(".field > label").forEach(function(label) {
+      var control = label.parentElement.querySelector("input,select,textarea");
+      if (!control) return;
+      if (!control.id) control.id = "setting-" + ++controlId;
+      label.htmlFor = control.id;
+    });
+  }
   function makeCollapsibleCard(title, bodyElement, defaultCollapsed, badgeEl) {
     var card = el("div", "card");
     var header = el("div", "card-header");
     var h3 = document.createElement("h3");
-    h3.textContent = title;
+    var toggle = el("button", "card-toggle");
+    toggle.type = "button";
+    toggle.textContent = title;
+    h3.appendChild(toggle);
     var rightWrap = el("div", "card-header-right");
     if (badgeEl) rightWrap.appendChild(badgeEl);
     var chevron = el("span", "card-chevron");
@@ -4560,8 +4696,9 @@ to {
     card.appendChild(header);
     card.appendChild(body);
     if (defaultCollapsed) card.classList.add("collapsed");
+    bindDisclosure(toggle, card, body, "collapsed", false);
     header.onclick = function() {
-      card.classList.toggle("collapsed");
+      toggle.click();
     };
     return card;
   }
@@ -4675,6 +4812,9 @@ to {
       photos.albums_enabled = source === "Album";
       photos.people_enabled = source === "Person";
       photos.tags_enabled = source === "Tag";
+      photos.favorites_enabled = source === "Favorites";
+      photos.rating_enabled = false;
+      photos.location_enabled = false;
       photos.inclusion_matching = "Match all enabled groups";
       photos.album_matching = "Any selected album";
       photos.person_matching = "Any selected person";
@@ -4690,10 +4830,34 @@ to {
       photos.excluded_tag_ids = "";
       photos.excluded_tag_labels = "";
       photos.source = source;
-      migrated.version = 2;
+      migrated.version = 3;
       return migrated;
     },
     2: function backupConfigVersion2(data) {
+      var migrated = JSON.parse(JSON.stringify(data));
+      var photos = migrated.photos;
+      if (photos) {
+        [
+          ["albums_enabled", "excluded_album_ids"],
+          ["people_enabled", "excluded_person_ids"],
+          ["tags_enabled", "excluded_tag_ids"]
+        ].forEach(function(group) {
+          if (String(photos[group[1]] || "").trim()) photos[group[0]] = true;
+        });
+        if (!Object.prototype.hasOwnProperty.call(photos, "favorites_enabled")) {
+          photos.favorites_enabled = photos.favorite_mode && photos.favorite_mode !== "Any";
+        }
+        if (!Object.prototype.hasOwnProperty.call(photos, "rating_enabled")) {
+          photos.rating_enabled = photos.minimum_rating && photos.minimum_rating !== "Any";
+        }
+        if (!Object.prototype.hasOwnProperty.call(photos, "location_enabled")) {
+          photos.location_enabled = !!(String(photos.country || "").trim() || String(photos.state || "").trim() || String(photos.city || "").trim());
+        }
+      }
+      migrated.version = 3;
+      return migrated;
+    },
+    3: function backupConfigVersion3(data) {
       return data;
     }
   };
@@ -4980,7 +5144,7 @@ to {
       reader.onload = function() {
         var data;
         try {
-          data = JSON.parse(reader.result);
+          data = JSON.parse(String(reader.result));
         } catch (_) {
           showBanner("Invalid file \u2014 could not parse JSON", "error");
           return;

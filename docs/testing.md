@@ -50,6 +50,18 @@ flash and RAM report plus factory/OTA binary sizes. A budget increase must be
 an intentional contract change in the same pull request, not just a larger
 number added after a build fails.
 
+### Web Type Checks
+
+`npm run webserver:typecheck` checks the assembled application and its imports,
+including settings, networking, backup, and rendering code. Setting field types
+come from the product contract; runtime-only fields are declared separately.
+The contracts and standalone save module additionally use strict checking.
+Legacy assembled functions still allow implicit parameter types while they are
+migrated incrementally to explicit modules. New modules should use strict types.
+`npm run test:web-types` verifies that invalid setting names and values fail the
+application check, and `npm run test:web-saves` covers overlapping writes,
+rollback, legacy-write ordering, and live updates during edits.
+
 ### Web UI Checks
 
 ```sh
@@ -71,6 +83,8 @@ Use `npm run test:web-smoke -- --list` to see the available scenario names. Run 
 ```sh
 npm run test:firmware-logic
 ```
+
+The helper tests include the production slideshow model; only platform logging and time are stubbed. `npm run test:parsers` additionally exercises the production Immich JSON parsers with response fixtures and ArduinoJson 7.4.3. The first run downloads checksum-verified test headers into `.esphome/host-tests`; subsequent runs use that cache.
 
 This group compiles and runs host-side C++ tests for firmware helper logic, then checks timezone data. It is much faster than a full ESPHome compile and is the right place to cover slideshow decisions, Immich request building, date handling, duration parsing, and other logic that can be tested without a device.
 
@@ -124,3 +138,24 @@ A useful manual pass is:
 - check firmware update status if release/update behavior changed
 
 Record any manual device testing in the pull request so reviewers know what was verified outside automation.
+
+### Internal Heap Checks
+
+The `memory` log records byte-addressable internal free bytes, allocator low-water
+bytes, the current largest free block, its sampled minimum, and free PSRAM.
+Reports run every minute and after Immich responses and image decoding. The
+largest-block minimum is sampled once per second and at these callbacks; it is
+not a guarantee that shorter fragmentation peaks were captured. Existing Home
+Assistant memory entities retain their names and sampling intervals.
+
+Compare the same device, HTTPS server, settings, and browser/API connections
+before and after allocation changes. Exercise JPEG and WebP photos, portrait
+pairs, sleep/wake, reconnects, and OTA. Keep enough runtime to observe repeated
+photo changes; different images and lazy decoder allocation affect the results.
+
+Background prefetch pauses below 48 KiB free internal RAM or a 16 KiB largest
+block, and resumes at 64 KiB free with a 24 KiB largest block. Look for
+`prefetch-paused` and `prefetch-resumed` reports. Verify foreground photo requests
+still run under pressure and prefetch resumes without changing saved settings.
+TLS allocations prefer dedicated PSRAM, general allocations above 1 KiB prefer
+PSRAM, and the 32 KiB internal reserve remains available to internal-only users.
