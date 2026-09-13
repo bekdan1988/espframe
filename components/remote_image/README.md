@@ -175,6 +175,7 @@ Main component class: `esphome::remote_image::OnlineImage`. Inherits `PollingCom
 | `set_url(const std::string &url)` | Set download URL. Validates scheme; clears ETag/Last-Modified only when the URL changes. |
 | `add_request_header(name, value)` | Add an HTTP request header (templatable value). |
 | `set_placeholder(image::Image *placeholder)` | Image to show until the download is ready. |
+| `get_buffer_capacity()` | Retained decoded allocation in bytes, including incomplete images. |
 | `release()` | Free the decoded buffer; image must be re-downloaded to show again. |
 | `resize_download_buffer(size_t size)` | Resize the download buffer; returns new size. |
 | `add_on_finished_callback(std::function<void(bool)> &&cb)` | Called when download finishes; argument is `cached`. |
@@ -249,3 +250,19 @@ Ring-style buffer for incoming HTTP data. Used by `OnlineImage` and decoders.
 ## License
 
 See [LICENSE](LICENSE) in this directory.
+
+### WebP direct RGB565 output
+
+When the decoded dimensions match an opaque RGB565 destination, libwebp writes
+into that existing buffer. Output is byte-swapped in place when needed to match
+the destination byte order, respecting libwebp’s `WEBP_SWAP_16BIT_CSP` setting;
+no full RGB888 intermediate is allocated. At 1280×800 this avoids 3,072,000 bytes
+of temporary PSRAM. Fit/fill transforms, letterboxing, non-RGB565 storage and
+transparent destinations retain the existing RGB888 conversion path. Libwebp's
+own scaling can still run before direct output when the resulting dimensions
+match the destination. Decoder-state safety estimates remain conservative.
+
+`npm run test:webp` builds the vendored decoder on the host and compares direct
+RGB565 pixels against the former RGB888 conversion using synthetic lossless,
+lossy and alpha WebP fixtures, both byte orders, scaling and malformed input.
+The decoder and helper are tested with `WEBP_SWAP_16BIT_CSP` undefined, 0 and 1.
