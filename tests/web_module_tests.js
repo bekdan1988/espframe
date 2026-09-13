@@ -94,9 +94,9 @@ assert.ok(
 assert.ok(!publicApp.includes("Advanced inclusion options"),
   "photo filters should not render the removed advanced inclusion panel");
 assert.ok(
-  publicApp.includes("if (nextValue && index > 0") &&
+  !publicApp.includes("if (nextValue && index > 0") &&
     publicApp.includes("S[spec[1]] = nextValue"),
-  "empty child location values should remain saveable after their parent is cleared"
+  "location fields should be independently saveable"
 );
 const filterFlush = immichFilterSource.slice(
   immichFilterSource.indexOf("- id: flush_slots_and_refetch"),
@@ -136,6 +136,13 @@ assert.ok(
       fetch.includes("id(immich_fetch_retry).execute()")
   ),
   "metadata HTTP failures should enter the bounded retry path"
+);
+assert.ok(
+  immichApiSource.includes("?withoutAssets=true") &&
+    immichApiSource.includes('api_generation == ImmichApiGeneration::V31_FLAT') &&
+    immichApiSource.includes("metadata_cursor") &&
+    immichApiSource.includes("parse_immich_metadata_next_cursor"),
+  "album compatibility should retain legacy payload minimization and use structured cursors"
 );
 assert.ok(
   filterFlush.includes("filter_apply_pending = true") &&
