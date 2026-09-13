@@ -168,9 +168,9 @@ inline bool immich_filter_requires_v32(const ImmichFilterConfig &config) {
 }
 
 inline bool immich_filter_location_is_valid(const ImmichFilterConfig &config) {
-  if (!config.location_enabled) return true;
-  if (!config.city.empty() && (config.state.empty() || config.country.empty())) return false;
-  if (!config.state.empty() && config.country.empty()) return false;
+  // Immich treats country, state, and city as independent exact predicates.
+  // Do not impose a geographic hierarchy that the API does not require.
+  (void) config;
   return true;
 }
 
@@ -239,13 +239,14 @@ inline ImmichFilterBranch select_immich_filter_branch(const ImmichFilterConfig &
   const bool use_albums = branch.group == "All" || branch.group == "Album";
   const bool use_people = branch.group == "All" || branch.group == "Person";
   const bool use_tags = branch.group == "All" || branch.group == "Tag";
-  // Structured intersections retain each group's complete "any" set. Flat
-  // search cannot represent this for people/tags, so readiness rejects those
-  // compound configurations before branch selection reaches this point.
-  const bool preserve_any_ids = branch.group == "All" &&
-      generation == ImmichApiGeneration::V32_STRUCTURED;
+  // Structured search can represent complete "any" sets when several groups
+  // must intersect. Keep the full people/tag predicates for that request, but
+  // retain a single album choice so random album sampling remains balanced and
+  // the exact album can be reused for portrait pairing.
+  const bool preserve_any_ids = generation == ImmichApiGeneration::V32_STRUCTURED &&
+      branch.group == "All";
   if (use_albums && config.albums_enabled) {
-    if (immich_matching_is_all(config.album_matching) || preserve_any_ids) {
+    if (immich_matching_is_all(config.album_matching)) {
       branch.album_ids = valid_uuid_csv(config.album_ids);
     } else {
       branch.album_ids = pick_album_id_for_metadata_search(valid_uuid_csv(config.album_ids), album_order,
@@ -299,6 +300,21 @@ inline bool immich_filter_branch_uses_album(const ImmichFilterBranch &branch) {
   return !split_valid_uuid_csv(branch.album_ids).empty();
 }
 
+inline bool immich_filter_branch_uses_legacy_metadata_search(
+    const ImmichFilterBranch &branch, ImmichApiGeneration generation) {
+  return generation == ImmichApiGeneration::V31_FLAT &&
+         immich_filter_branch_uses_album(branch);
+}
+
+inline bool immich_filter_branch_uses_metadata_search(
+    const ImmichFilterBranch &branch, ImmichApiGeneration generation) {
+  // Legacy album metadata search authorizes the album before returning assets,
+  // so it includes shared-album contributors. Structured Immich random search
+  // uses the same authorized scope and avoids walking cursor pages to reach a
+  // randomly selected ordinal.
+  return immich_filter_branch_uses_legacy_metadata_search(branch, generation);
+}
+
 inline void immich_append_json_field(std::string &body, bool &has_field,
                                      const std::string &key, const std::string &value) {
   if (has_field) body += ",";
@@ -309,12 +325,17 @@ inline void immich_append_json_field(std::string &body, bool &has_field,
 inline std::string build_immich_filter_search_body(
     const ImmichFilterConfig &config, const ImmichFilterBranch &branch,
     ImmichApiGeneration generation, uint16_t size, bool with_people,
-    bool metadata_search = false, uint32_t page = 1) {
+    bool metadata_search = false, uint32_t page = 1,
+    const std::string &cursor = "") {
   if (size == 0) size = 1;
   if (page == 0) page = 1;
   std::string body = "{";
   bool root_field = false;
-  if (metadata_search) immich_append_json_field(body, root_field, "page", std::to_string(page));
+  if (metadata_search && generation == ImmichApiGeneration::V31_FLAT) {
+    immich_append_json_field(body, root_field, "page", std::to_string(page));
+  } else if (metadata_search && generation == ImmichApiGeneration::V32_STRUCTURED && !cursor.empty()) {
+    immich_append_json_field(body, root_field, "cursor", "\"" + immich_json_escape(cursor) + "\"");
+  }
   immich_append_json_field(body, root_field, "size", std::to_string(size));
   immich_append_json_field(body, root_field, "withExif", "true");
   if (with_people) immich_append_json_field(body, root_field, "withPeople", "true");
@@ -413,6 +434,8 @@ struct ImmichRequestState {
   std::string metadata_tag_ids;
   int metadata_page = 1;
   int metadata_page_size = 1;
+  std::string metadata_cursor;
+  uint32_t metadata_cursor_page = 1;
   uint32_t metadata_max_page = 1;
   uint8_t metadata_empty_page_probes = 0;
   bool metadata_page_bound_is_upper = false;
@@ -424,6 +447,10 @@ struct ImmichRequestState {
   std::vector<ImmichMetadataCountCacheEntry> metadata_count_cache;
   bool candidate_pool_hit = false;
   std::string candidate_pool_source_filter_id;
+  std::string filter_scope_asset_id;
+  std::string filter_scope_tag_ids;
+  int filter_scope_slot = -1;
+  uint32_t filter_scope_generation = 0;
   uint32_t photo_source_generation = 0;
   uint32_t random_request_generation = 0;
   std::string server_version;
@@ -451,6 +478,31 @@ struct ImmichRequestState {
 
   bool random_request_is_current() const {
     return this->random_request_generation == this->photo_source_generation;
+  }
+
+  void begin_filter_scope_request(int slot, const std::string &asset_id,
+                                  const std::string &tag_ids) {
+    this->filter_scope_slot = slot;
+    this->filter_scope_asset_id = asset_id;
+    this->filter_scope_tag_ids = tag_ids;
+    this->filter_scope_generation = this->photo_source_generation;
+  }
+
+  bool filter_scope_request_pending() const {
+    return this->filter_scope_slot >= 0 && this->filter_scope_slot <= 2 &&
+           !this->filter_scope_asset_id.empty();
+  }
+
+  bool filter_scope_request_is_current() const {
+    return this->filter_scope_request_pending() &&
+           this->filter_scope_generation == this->photo_source_generation;
+  }
+
+  void clear_filter_scope_request() {
+    this->filter_scope_asset_id.clear();
+    this->filter_scope_tag_ids.clear();
+    this->filter_scope_slot = -1;
+    this->filter_scope_generation = 0;
   }
 
   bool prepare_any_id_retry(const ImmichFilterConfig &config) {
@@ -483,6 +535,7 @@ struct ImmichRequestState {
   // statistics fallback cache, but applying a source must still clear its
   // in-progress page-bound probes.
   void reset_album_metadata_fallbacks() {
+    this->metadata_cursor.clear();
     this->metadata_max_page = 1;
     this->metadata_empty_page_probes = 0;
     this->metadata_page_bound_is_upper = false;
@@ -584,6 +637,7 @@ struct ImmichRequestState {
     this->retry_delay_ms = 2000;
     this->retry_cooldown_until_ms = 0;
     this->metadata_max_page = 1;
+    this->metadata_cursor.clear();
     this->metadata_empty_page_probes = 0;
     this->metadata_page_bound_is_upper = false;
     this->metadata_page1_fallback_attempted = false;
@@ -1016,6 +1070,17 @@ inline std::vector<std::string> split_valid_uuid_csv(const std::string &csv) {
   return valid;
 }
 
+inline bool immich_filter_branch_requires_tag_scope_resolution(
+    const ImmichFilterConfig &config, const ImmichFilterBranch &branch,
+    ImmichApiGeneration generation) {
+  // Structured searches can apply an any-of tag predicate, but their result
+  // items do not include tag relations. Resolve the selected asset through its
+  // detail endpoint before reusing tag scope for portrait pairing.
+  return generation == ImmichApiGeneration::V32_STRUCTURED &&
+         branch.group == "All" && !immich_matching_is_all(config.tag_matching) &&
+         split_valid_uuid_csv(branch.tag_ids).size() > 1;
+}
+
 inline std::string valid_uuid_csv(const std::string &csv) {
   auto ids = split_valid_uuid_csv(csv);
   std::string result;
@@ -1196,6 +1261,7 @@ inline void initialize_immich_metadata_page_range(ImmichRequestState &state,
   state.metadata_page_size = page_size;
   state.metadata_max_page = immich_metadata_page_count_for_total(total, page_size);
   state.metadata_page = (esp_random() % state.metadata_max_page) + 1;
+  state.metadata_cursor_page = 1;
   state.metadata_empty_page_probes = 0;
   state.metadata_page_bound_is_upper = count_is_upper_bound;
   state.metadata_page1_fallback_attempted = false;
@@ -1229,8 +1295,9 @@ inline bool retry_empty_immich_metadata_page(ImmichRequestState &state) {
 }
 
 inline bool immich_source_uses_metadata_search(const std::string &photo_source) {
-  // Album metadata search is retained because, unlike random search, Immich
-  // authorizes the album first and can include assets contributed by others.
+  // Legacy flat album metadata search authorizes the album first and includes
+  // other contributors. Structured 3.2+ random search uses the same authorized
+  // search scope as structured metadata search; this legacy rule does not apply.
   return photo_source == "Album";
 }
 
@@ -1522,6 +1589,59 @@ inline JsonArray immich_asset_array_from_document(JsonDocument &doc) {
   return items;
 }
 
+inline std::string immich_asset_filter_scope(const std::string &body,
+                                             const std::string &asset_id,
+                                             const std::string &configured_ids,
+                                             const char *relation_key) {
+  if (asset_id.empty() || configured_ids.empty() || relation_key == nullptr) return "";
+  auto doc = esphome::json::parse_json(body);
+  if (doc.isNull()) return "";
+  auto matching_scope = [&](JsonObject asset) {
+    if (asset.isNull() || !asset["id"].is<const char *>() ||
+        asset["id"].as<std::string>() != asset_id) return std::string();
+    JsonArray related = asset[relation_key].as<JsonArray>();
+    if (related.isNull()) return std::string();
+
+    std::vector<std::string> matching_ids;
+    for (size_t j = 0; j < related.size(); j++) {
+      JsonObject relation = related[j].as<JsonObject>();
+      if (relation.isNull() || !relation["id"].is<const char *>()) continue;
+      const std::string relation_id = relation["id"].as<std::string>();
+      for (const auto &configured_id : split_valid_uuid_csv(configured_ids)) {
+        if (configured_id == relation_id) {
+          matching_ids.push_back(relation_id);
+          break;
+        }
+      }
+    }
+    std::string result;
+    for (const auto &configured_id : split_valid_uuid_csv(configured_ids)) {
+      if (std::find(matching_ids.begin(), matching_ids.end(), configured_id) != matching_ids.end()) {
+        if (!result.empty()) result += ",";
+        result += configured_id;
+      }
+    }
+    return result;
+  };
+
+  // The asset-detail endpoint returns the asset object directly instead of
+  // wrapping it in {"assets":{"items":...}} like search responses do.
+  if (doc.is<JsonObject>()) {
+    JsonObject root = doc.as<JsonObject>();
+    if (root["id"].is<const char *>()) return matching_scope(root);
+  }
+
+  JsonArray assets = immich_asset_array_from_document(doc);
+  if (assets.isNull()) return "";
+  for (size_t i = 0; i < assets.size(); i++) {
+    JsonObject asset = assets[i].as<JsonObject>();
+    if (asset.isNull() || !asset["id"].is<const char *>() ||
+        asset["id"].as<std::string>() != asset_id) continue;
+    return matching_scope(asset);
+  }
+  return "";
+}
+
 inline size_t append_immich_asset_candidates(
     const std::string &body, const std::string &base_url,
     std::vector<ImmichAssetMeta> &pool,
@@ -1565,6 +1685,14 @@ inline uint32_t parse_immich_metadata_total(const std::string &body) {
     total = assets["items"].as<JsonArray>().size();
   }
   return total > 0 ? static_cast<uint32_t>(total) : 0;
+}
+
+inline std::string parse_immich_metadata_next_cursor(const std::string &body) {
+  auto doc = esphome::json::parse_json(body);
+  if (doc.isNull() || !doc.is<JsonObject>()) return "";
+  JsonObject assets = doc.as<JsonObject>()["assets"].as<JsonObject>();
+  if (assets.isNull() || !assets["nextCursor"].is<const char *>()) return "";
+  return assets["nextCursor"].as<std::string>();
 }
 
 inline uint32_t parse_immich_statistics_total(const std::string &body) {
@@ -1728,22 +1856,29 @@ inline std::string find_immich_portrait_companion_url(const std::string &body,
                                                       const std::string &base_url,
                                                       const std::string &primary_asset_id,
                                                       const std::string &primary_datetime = "",
-                                                      uint32_t *next_page = nullptr) {
+                                                      uint32_t *next_page = nullptr,
+                                                      std::string *next_cursor = nullptr) {
   if (next_page != nullptr) *next_page = 0;
+  if (next_cursor != nullptr) next_cursor->clear();
   auto doc = esphome::json::parse_json(body);
   if (doc.isNull()) return "";
 
-  if (next_page != nullptr && doc.is<JsonObject>()) {
+  if ((next_page != nullptr || next_cursor != nullptr) && doc.is<JsonObject>()) {
     JsonObject assets = doc.as<JsonObject>()["assets"].as<JsonObject>();
     if (!assets.isNull()) {
-      if (assets["nextPage"].is<const char *>()) {
-        const std::string raw = assets["nextPage"].as<std::string>();
-        *next_page = static_cast<uint32_t>(strtoul(raw.c_str(), nullptr, 10));
-      } else if (assets["nextPage"].is<uint32_t>()) {
-        *next_page = assets["nextPage"].as<uint32_t>();
-      } else if (assets["nextPage"].is<int>()) {
-        const int value = assets["nextPage"].as<int>();
-        if (value > 0) *next_page = static_cast<uint32_t>(value);
+      if (next_page != nullptr) {
+        if (assets["nextPage"].is<const char *>()) {
+          const std::string raw = assets["nextPage"].as<std::string>();
+          *next_page = static_cast<uint32_t>(strtoul(raw.c_str(), nullptr, 10));
+        } else if (assets["nextPage"].is<uint32_t>()) {
+          *next_page = assets["nextPage"].as<uint32_t>();
+        } else if (assets["nextPage"].is<int>()) {
+          const int value = assets["nextPage"].as<int>();
+          if (value > 0) *next_page = static_cast<uint32_t>(value);
+        }
+      }
+      if (next_cursor != nullptr && assets["nextCursor"].is<const char *>()) {
+        *next_cursor = assets["nextCursor"].as<std::string>();
       }
     }
   }

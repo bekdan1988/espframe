@@ -422,7 +422,9 @@ static void test_smart_filter_helpers() {
   assert(flat.find("\"filter\"") == std::string::npos);
   assert(immich_filter_location_is_valid(constrained));
   constrained.country.clear();
-  assert(!immich_filter_location_is_valid(constrained));
+  assert(immich_filter_location_is_valid(constrained));
+  constrained.state.clear();
+  assert(immich_filter_location_is_valid(constrained));
 
   ImmichFilterConfig combined;
   combined.albums_enabled = true;
@@ -449,13 +451,26 @@ static void test_smart_filter_helpers() {
   assert(all.album_ids == combined.album_ids);
   std::string structured = build_immich_filter_search_body(
       combined, all, ImmichApiGeneration::V32_STRUCTURED, 10, true, true, 3);
-  assert(structured.find("\"page\":3") != std::string::npos);
+  assert(structured.find("\"page\"") == std::string::npos);
   assert(structured.find("\"filter\":{") != std::string::npos);
   assert(structured.find("\"type\":{\"eq\":\"IMAGE\"}") != std::string::npos);
   assert(structured.find("\"rating\":{\"gte\":4}") != std::string::npos);
   assert(structured.find("\"albumIds\":{\"all\"") != std::string::npos);
   assert(structured.find("\"none\":[\"" + excluded + "\"]") != std::string::npos);
   assert(structured.find("\"visibility\":\"timeline\"") == std::string::npos);
+  std::string structured_cursor = build_immich_filter_search_body(
+      combined, all, ImmichApiGeneration::V32_STRUCTURED, 10, true, true, 3,
+      "cursor token");
+  assert(structured_cursor.find("\"page\"") == std::string::npos);
+  assert(structured_cursor.find("\"cursor\":\"cursor token\"") != std::string::npos);
+  assert(immich_filter_branch_uses_legacy_metadata_search(
+      all, ImmichApiGeneration::V31_FLAT));
+  assert(!immich_filter_branch_uses_legacy_metadata_search(
+      all, ImmichApiGeneration::V32_STRUCTURED));
+  assert(immich_filter_branch_uses_metadata_search(
+      all, ImmichApiGeneration::V31_FLAT));
+  assert(!immich_filter_branch_uses_metadata_search(
+      all, ImmichApiGeneration::V32_STRUCTURED));
   std::string statistics = build_immich_filter_statistics_body(
       combined, all, ImmichApiGeneration::V32_STRUCTURED);
   assert(statistics.find("\"size\"") == std::string::npos);
@@ -495,13 +510,13 @@ static void test_smart_filter_helpers() {
       intersecting_any, group_index, album_index, "Album list order",
       ImmichApiGeneration::V32_STRUCTURED);
   assert(complete_intersection.group == "All");
-  assert(complete_intersection.album_ids == intersecting_any.album_ids);
+  assert(complete_intersection.album_ids == album1);
   assert(complete_intersection.person_ids == intersecting_any.person_ids);
   std::string complete_intersection_body = build_immich_filter_search_body(
       intersecting_any, complete_intersection, ImmichApiGeneration::V32_STRUCTURED,
       10, true);
   assert(complete_intersection_body.find("\"albumIds\":{\"any\":[\"" + album1 +
-                                         "\",\"" + album2 + "\"]}") != std::string::npos);
+                                         "\"]}") != std::string::npos);
   assert(complete_intersection_body.find("\"personIds\":{\"any\":[\"" + person1 +
                                          "\",\"" + excluded + "\"]}") != std::string::npos);
   ImmichFilterBranch sampled_flat_intersection = select_immich_filter_branch(
@@ -529,14 +544,30 @@ static void test_smart_filter_helpers() {
       retry_any_person, retry_group_index, retry_album_index, "Random albums",
       ImmichApiGeneration::V32_STRUCTURED);
   assert(split_valid_uuid_csv(structured_any_person.person_ids).size() == 1);
+  std::string structured_any_person_body = build_immich_filter_search_body(
+      retry_any_person, structured_any_person, ImmichApiGeneration::V32_STRUCTURED,
+      10, false);
+  assert(structured_any_person_body.find("\"personIds\":{\"any\":[\"") != std::string::npos);
+  assert(structured_any_person_body.find(person1 + "\",\"" + excluded) == std::string::npos);
   uint8_t empty_id_attempts = 0;
   assert(retry_next_any_selected_id(
       retry_any_person, ImmichApiGeneration::V32_STRUCTURED,
       empty_id_attempts, structured_any_person));
   assert(structured_any_person.person_ids == retry_any_person.person_ids);
-  assert(!retry_next_any_selected_id(
-      retry_any_person, ImmichApiGeneration::V32_STRUCTURED,
-      empty_id_attempts, structured_any_person));
+
+  ImmichFilterConfig tag_scope_config = intersecting_any;
+  tag_scope_config.tags_enabled = true;
+  tag_scope_config.tag_ids = tag1 + "," + excluded;
+  tag_scope_config.tag_matching = "Any selected tag";
+  ImmichFilterBranch tag_scope_branch = complete_intersection;
+  tag_scope_branch.tag_ids = tag_scope_config.tag_ids;
+  assert(immich_filter_branch_requires_tag_scope_resolution(
+      tag_scope_config, tag_scope_branch, ImmichApiGeneration::V32_STRUCTURED));
+  assert(!immich_filter_branch_requires_tag_scope_resolution(
+      tag_scope_config, tag_scope_branch, ImmichApiGeneration::V31_FLAT));
+  tag_scope_config.tag_matching = "All selected tags";
+  assert(!immich_filter_branch_requires_tag_scope_resolution(
+      tag_scope_config, tag_scope_branch, ImmichApiGeneration::V32_STRUCTURED));
 
   retry_group_index = 0;
   ImmichFilterBranch flat_any_person = select_immich_filter_branch(
@@ -1680,7 +1711,41 @@ static void test_filter_invalidation_preserves_display_and_clears_work() {
   assert(state.noncritical_remote_updates_in_flight == 0);
 }
 
+static void test_structured_companion_pagination() {
+  SlideshowRuntimeState state;
+  assert(state.advance_portrait_search(0, "", true, 1));
+  assert(state.portrait_search_exhaustive && !state.portrait_search_expanded);
+  assert(state.advance_portrait_search(0, "opaque-page-2", true, 1));
+  assert(state.portrait_search_cursor == "opaque-page-2");
+  assert(state.advance_portrait_search(0, "opaque-page-3", true, 1));
+  assert(state.advance_portrait_search(0, "", true, 1));
+  assert(state.portrait_search_expanded && state.portrait_search_cursor.empty());
+  assert(state.advance_portrait_search(0, "expanded-page-2", true, 1));
+  assert(!state.advance_portrait_search(0, "expanded-page-2", true, 1));
+  state.reset();
+  assert(state.portrait_search_cursor.empty());
+  assert(state.advance_portrait_search(0, "", false, 0));
+  assert(state.advance_portrait_search(2, "ignored", false, 0));
+  assert(state.portrait_search_page == 2 && state.portrait_search_cursor.empty());
+  assert(!state.advance_portrait_search(0, "ignored", false, 0));
+  ImmichFilterConfig config;
+  ImmichFilterBranch branch;
+  const std::string cursor = "opaque\"cursor";
+  auto structured = build_immich_filter_search_body(
+      config, branch, ImmichApiGeneration::V32_STRUCTURED, 20, false, true, 3, cursor);
+  assert(structured.find("\"cursor\":\"opaque\\\"cursor\"") != std::string::npos);
+  assert(structured.find("\"page\"") == std::string::npos);
+  auto legacy = build_immich_filter_search_body(
+      config, branch, ImmichApiGeneration::V31_FLAT, 20, false, true, 3, cursor);
+  assert(legacy.find("\"page\":3") != std::string::npos);
+  assert(legacy.find("\"cursor\"") == std::string::npos);
+  auto random = build_immich_filter_search_body(
+      config, branch, ImmichApiGeneration::V32_STRUCTURED, 20, false, false, 3, cursor);
+  assert(random.find("\"cursor\"") == std::string::npos);
+}
+
 int main() {
+  test_structured_companion_pagination();
   test_memory_pressure_prefetch();
   test_filter_invalidation_preserves_display_and_clears_work();
   test_date_and_url_helpers();

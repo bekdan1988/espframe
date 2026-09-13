@@ -23,6 +23,27 @@ int main() {
     return find_immich_portrait_companion_url(body, base, "primary", date, next);
   };
   const std::string suffix = "/thumbnail?size=preview";
+  // A full first page can miss a companion that exists on a later cursor page.
+  std::string first_page = "{\"assets\":{\"nextCursor\":\"opaque-page-2\",\"items\":[";
+  for (int i = 0; i < 20; ++i) {
+    if (i) first_page += ",";
+    first_page += "{\"id\":\"landscape-" + std::to_string(i) + "\",\"width\":200,\"height\":100}";
+  }
+  first_page += "]}}";
+  std::string cursor;
+  uint32_t page = 99;
+  assert(find_immich_portrait_companion_url(first_page, base, "primary", "", &page, &cursor).empty());
+  assert(page == 0 && cursor == "opaque-page-2");
+  const std::string second_page = "{\"assets\":{\"nextCursor\":null,\"items\":" + candidates + "}}";
+  assert(!find_immich_portrait_companion_url(second_page, base, "primary", "", &page, &cursor).empty());
+  assert(cursor.empty());
+  for (const auto *invalid_cursor : {"42", "null", "{}"}) {
+    cursor = "stale";
+    find_immich_portrait_companion_url(std::string("{\"assets\":{\"items\":[],\"nextCursor\":") + invalid_cursor + "}}",
+                                     base, "primary", "", nullptr, &cursor);
+    assert(cursor.empty());
+  }
+
   // Skip self/landscape, prefer a valid timestamp, and retain the first equal-distance match.
   assert(companion(candidates, "2026-04-21T12:00:00") == base + "/api/assets/before" + suffix);
   assert(companion(candidates, "invalid") == base + "/api/assets/unknown-date" + suffix);
@@ -32,6 +53,12 @@ int main() {
                      "2026-04-21T12:00:00", &next) == base + "/api/assets/before" + suffix);
     assert(next == 3);
   }
+  std::string next_cursor;
+  assert(find_immich_portrait_companion_url(
+           "{\"assets\":{\"nextCursor\":\"cursor-2\",\"items\":" + candidates + "}}",
+           base, "primary", "2026-04-21T12:00:00", nullptr, &next_cursor) ==
+         base + "/api/assets/before" + suffix);
+  assert(next_cursor == "cursor-2");
   assert(companion(R"JSON([{"id":"rotated","exifInfo":{"exifImageWidth":200,"exifImageHeight":100,"orientation":"6","dateTimeOriginal":"2026-04-21T12:00:00"}}])JSON",
                    "2026-04-21T12:00:00") == base + "/api/assets/rotated" + suffix);
   assert(companion("[]", "2026-04-21T12:00:00").empty());
@@ -67,5 +94,24 @@ int main() {
   uint32_t album_count = 99;
   assert(parse_immich_album_asset_count("{\"assetCount\":0}", &album_count) && album_count == 0);
   assert(!parse_immich_album_asset_count("{\"assetCount\":\"0\"}", &album_count));
+  assert(parse_immich_metadata_next_cursor(
+           "{\"assets\":{\"nextCursor\":\"cursor-3\"}}") == "cursor-3");
+  assert(parse_immich_metadata_next_cursor(
+           "{\"assets\":{\"nextCursor\":null}}").empty());
+  const std::string scoped_asset =
+      "{\"assets\":{\"items\":[{\"id\":\"asset-1\",\"people\":[{\"id\":\"33333333-3333-4333-8333-333333333333\"},{\"id\":\"55555555-5555-4555-8555-555555555555\"}],\"tags\":[{\"id\":\"44444444-4444-4444-8444-444444444444\"}]}]}}";
+  assert(immich_asset_filter_scope(
+           scoped_asset, "asset-1",
+           "33333333-3333-4333-8333-333333333333,55555555-5555-4555-8555-555555555555",
+           "people") ==
+         "33333333-3333-4333-8333-333333333333,55555555-5555-4555-8555-555555555555");
+  assert(immich_asset_filter_scope(
+           scoped_asset, "asset-1",
+           "44444444-4444-4444-8444-444444444444,55555555-5555-4555-8555-555555555555",
+           "tags") == "44444444-4444-4444-8444-444444444444");
+  assert(immich_asset_filter_scope(
+           "{\"id\":\"asset-1\",\"tags\":[{\"id\":\"44444444-4444-4444-8444-444444444444\"}]}",
+           "asset-1", "44444444-4444-4444-8444-444444444444", "tags") ==
+         "44444444-4444-4444-8444-444444444444");
   std::cout << "Immich production parser tests passed\n";
 }
