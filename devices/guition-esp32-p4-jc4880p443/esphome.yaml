@@ -1,7 +1,7 @@
 # Guition ESP32-P4-JC4880P443 Immich Frame
 substitutions:
   name: "immich-frame-43inch"
-  friendly_name: "Immich Frame 43inch"
+  friendly_name: "Espframe 43inch"
 
 # Wifi Setup
 wifi:
