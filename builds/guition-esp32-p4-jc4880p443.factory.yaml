@@ -8,7 +8,7 @@
 
 substitutions:
   name: "immich-frame-43inch"
-  friendly_name: "Immich Frame 43inch"
+  friendly_name: "Espframe 43inch"
   firmware_version: "0.0.0"
 
 packages:
