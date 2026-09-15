@@ -227,6 +227,11 @@ static void test_immich_body_helpers() {
   assert(!immich_dimensions_are_portrait(1920, 1080, "6", false));
   assert(immich_dimensions_are_portrait(1920, 1080, "6", true));
   assert(immich_dimensions_are_portrait(1080, 1920, "6", false));
+  assert(immich_memory_asset_matches_orientation(1080, 1920, "", false, "Portrait Only"));
+  assert(!immich_memory_asset_matches_orientation(1920, 1080, "", false, "Portrait Only"));
+  assert(immich_memory_asset_matches_orientation(1920, 1080, "", false, "Landscape Only"));
+  assert(immich_memory_asset_matches_orientation(1920, 1080, "6", true, "Portrait Only"));
+  assert(!immich_memory_asset_matches_orientation(0, 0, "", false, "Landscape Only"));
   assert(pick_one_uuid_from_csv(" a, b ,, c ") == "a");
   assert(select_immich_tag_ids("t1,t2", "Any selected tag") == "t1");
   assert(select_immich_tag_ids("t1,t2", "All selected tags") == "t1,t2");
@@ -723,9 +728,30 @@ static void test_immich_request_state() {
   assert(!cached_upper_bound);
 
   state.begin_memory_search();
+  assert(state.memory_request_is_current());
   assert(state.memory_window_offset == -2);
   assert(state.memory_asset_id.empty());
+  const uint32_t first_memory_generation = state.memory_request_generation;
+  state.begin_memory_search(2, false);
+  assert(state.memory_request_generation != first_memory_generation);
+  assert(!state.memory_request_is_current(first_memory_generation));
+  assert(state.memory_request_is_current(state.memory_request_generation));
+  state.invalidate_photo_source_requests();
+  assert(!state.memory_request_is_current());
+  state.begin_memory_search();
+  assert(state.memory_request_is_current());
+  assert(!state.memory_request_is_current(first_memory_generation));
+  assert(state.memory_request_is_current(state.memory_request_generation));
+  state.begin_filter_scope_request(1, "stale-asset", "stale-tag");
+  assert(state.filter_scope_request_pending());
+  assert(state.filter_scope_request_is_current());
+  state.invalidate_photo_source_requests();
+  assert(!state.filter_scope_request_is_current());
+  state.clear_filter_scope_request();
+  assert(!state.filter_scope_request_pending());
   state.add_memory_image("asset-a");
+  assert(state.memory_image_count == 1);
+  state.add_memory_image("landscape", false);
   assert(state.memory_image_count == 1);
   assert(state.memory_asset_id == "asset-a");
   state.add_memory_image("");
@@ -736,8 +762,33 @@ static void test_immich_request_state() {
   // esp_random() always returns zero, so every replacement roll succeeds and the
   // most recent asset wins.
   assert(state.memory_asset_id == "asset-b");
+  assert(state.reject_memory_asset("asset-b"));
+  state.begin_memory_search(2, false);
+  state.add_memory_image("asset-b");
+  assert(state.memory_image_count == 0);
+  state.add_memory_image("asset-c");
+  assert(state.memory_image_count == 1);
+  assert(state.memory_asset_id == "asset-c");
+  state.begin_memory_search();
+  state.add_memory_image("asset-b");
+  assert(state.memory_image_count == 1);
   assert(state.advance_memory_window());
   assert(state.memory_window_offset == -1);
+  state.begin_memory_search(0);
+  assert(state.memory_window_offset == 0);
+  assert(!state.advance_memory_window());
+  state.begin_memory_search(7);
+  assert(state.memory_window_offset == -7);
+  for (int offset = -7; offset < 7; offset++) assert(state.advance_memory_window());
+  assert(state.memory_window_offset == 7);
+  assert(!state.advance_memory_window());
+  assert(immich_memories_source_active("Memories"));
+  assert(!immich_memories_source_active("All Photos"));
+  assert(immich_memories_window_days("Same Day") == 0);
+  assert(immich_memories_window_days("Within 1 Day") == 1);
+  assert(immich_memories_window_days("Within 2 Days") == 2);
+  assert(immich_memories_window_days("Within 3 Days") == 3);
+  assert(immich_memories_window_days("Within 7 Days") == 7);
 
   assert(state.register_request_error() == 1);
   assert(state.prepare_retry_delay() == 2000);
@@ -1653,8 +1704,8 @@ static void test_configuration_contract_capabilities() {
   using namespace esphome::espframe::contract;
   static_assert(CONTRACT_VERSION == 2);
   static_assert(API_VERSION == 1);
-  static_assert(SETTING_COUNT == 50);
-  static_assert(CONFIGURATION_FIELD_COUNT == 71);
+  static_assert(SETTING_COUNT == 52);
+  static_assert(CONFIGURATION_FIELD_COUNT == 73);
   assert(std::string(CAPABILITIES_PATH) == "/espframe/api/v1/capabilities");
   assert(std::string(CONFIGURATION_PATH) == "/espframe/api/v1/configuration");
   const std::string capabilities(CAPABILITIES_JSON);

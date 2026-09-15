@@ -5,12 +5,14 @@ description: Combine Immich albums, people, tags, favorites, ratings, dates, loc
 
 # Espframe Smart Photo Filters for Immich
 
-Open the device web UI at `http://<device-ip>/` and use **Photo Filter**. Start with the seven **Filter by** switches, then open only the groups you need. Dates, albums, people, tags, favorites, ratings, and location retain their saved values when switched off. Changes apply automatically shortly after you change a control.
+Open the device web UI at `http://<device-ip>/` and use **Filters**. Start with the seven **Filter by** switches, then open only the groups you need. To use On This Day memories, open the **Memories** panel and turn on **Show Memories Only**. Dates, albums, people, tags, favorites, ratings, and location retain their saved values when switched off. Changes apply automatically shortly after you change a control.
 
 <!-- ESPFRAME:SETTINGS_TABLE source START -->
 | Setting | Default | Format | Description |
 |---------|---------|--------|-------------|
-| **Source** | All Photos | Select | Choose all photos, favorites, albums, people, tags, or Immich memories. |
+| **Photo Source (legacy compatibility)** | All Photos | Select | Legacy compatibility source value; enable Memories from the dedicated Memories panel and use the Filters panel for the remaining photo sources. |
+| **Memories Window** | `±2 Days` | `Same Day`, `±1 Day`, `±2 Days`, `±3 Days`, or `±7 Days` | When Memories is enabled, search this calendar-day window across prior years. |
+| **Fallback to All Photos** | On | Toggle | When Memories has no result or fails, show an unfiltered All Photos result. |
 | **Filter by Albums** | False | Toggle | Enable filtering by any selected album while preserving the list when disabled. |
 | **Filter by People** | False | Toggle | Enable filtering by any selected person while preserving the list when disabled. |
 | **Filter by Tags** | False | Toggle | Enable filtering by any selected tag while preserving the list when disabled. |
@@ -18,9 +20,9 @@ Open the device web UI at `http://<device-ip>/` and use **Photo Filter**. Start 
 | **Filter by Rating** | False | Toggle | Enable minimum rating filtering while preserving the selected rating when disabled. |
 | **Filter by Location** | False | Toggle | Enable country, state or province, and city filtering as one group. |
 | **Inclusion Groups** | Match all enabled groups | Select | Require every enabled album, people, and tag group, or rotate evenly through one enabled group per request. |
-| **Album Matching** | Any selected album | Select | Legacy compatibility value; the Photo Filter always uses any selected album. |
-| **Person Matching** | Any selected person | Select | Legacy compatibility value; the Photo Filter always uses any selected person. |
-| **Legacy Tag Matching** | Any selected tag | Select | Legacy compatibility value; the Photo Filter always uses any selected tag. |
+| **Album Matching** | Any selected album | Select | Legacy compatibility value; the Filters panel always uses any selected album. |
+| **Person Matching** | Any selected person | Select | Legacy compatibility value; the Filters panel always uses any selected person. |
+| **Legacy Tag Matching** | Any selected tag | Select | Legacy compatibility value; the Filters panel always uses any selected tag. |
 | **Favorites** | Any | Select | Include any photo, require favorites, or exclude favorites. |
 | **Minimum Rating** | Any | Select | Require at least the selected Immich rating; available with Immich 3.2 or newer. |
 | **Country** |  | Exact text, up to 96 characters | Require an exact Immich country value. |
@@ -36,6 +38,7 @@ Open the device web UI at `http://<device-ip>/` and use **Photo Filter**. Start 
 | **Album** | One or more album UUIDs | Specific albums |
 | **Person** | One or more person UUIDs | Photos of specific people |
 | **Tag** | One or more tag UUIDs | Photos with specific Immich tags |
+| **Memories** | Immich `memory.read` permission | On This Day photos from prior years |
 | **Custom** | Combine any controls | A composed smart filter |
 
 ---
@@ -73,6 +76,18 @@ Shows photos assigned to one or more Immich tags. **Get the UUID:** open the tag
 
 Multiple selected tags use **Any selected tag**, so the slideshow includes photos from across the selected tags. Albums and people use the same any-selected behavior. The old matching settings remain stored for compatibility but are no longer shown in the web UI.
 
+## Memories / On This Day
+
+Turn on **Show Memories Only** in the **Memories** panel to show photos from the same calendar day in prior years, using Immich's On This Day memories. The frame searches the selected day plus or minus the configured **Memories Window**: **Same Day**, **±1 Day**, **±2 Days**, **±3 Days**, or **±7 Days**. The default is **±2 Days**.
+
+Configured Memories window: Same Day through ±7 Days; default ±2 Days; matched across prior years.
+
+Memories is an exclusive source. While it is enabled, all saved content filters—date, albums, people, tags, favorites, ratings, location, inclusion/exclusion rules, and album order—are ignored. Their values are preserved while Memories is active. Selecting **Custom** restores the composed filter; selecting a legacy preset such as **All Photos**, **Favorites**, **Album**, **Person**, or **Tag** applies that source's documented preset. Orientation, display mode, metadata, and portrait pairing are independent display options and remain available.
+
+If no memory is found, or Immich cannot answer the memory request, **Fallback to All Photos** shows an unfiltered photo instead. Turn fallback off to keep the frame on its current photo and show the empty-state message when the selected window has no result. The frame needs the `memory.read` API permission for this source.
+
+Fallback behavior: Falls back to unfiltered All Photos when the selected Memories window has no result or the Memories request fails.
+
 ## Album, Person, and Tag ID limits
 
 The device stores each of **Album IDs**, **Album Labels**, **Person IDs**, **Person Labels**, **Tag IDs**, and **Tag Labels** as a single text field with a **255 character** maximum. For IDs, that is about six full UUIDs plus commas. The web UI blocks longer lists and shows an error so values are not silently cut short.
@@ -83,15 +98,17 @@ Saving multiple IDs uses an HTTP POST body for the value, so the request stays w
 
 Espframe discovers the server version from Immich's public server-version endpoint. Immich 3.2 and newer support minimum ratings and exclusions. On older or unknown versions those controls show a clear compatibility message, saved values remain intact, and the frame refuses to silently omit an active unsupported rule.
 
-The former **Memories** source is migrated to an empty filter (equivalent to All Photos) and shown once as a dismissible notice. The deprecated **Photos: Source** Home Assistant entity remains for one compatibility release as a preset adapter; selecting a legacy source resets the smart filter to that preset, while a composed filter reports **Custom**.
+The deprecated **Photos: Source** Home Assistant entity remains for one compatibility release as a preset adapter. **Memories** is supported as an active source again; selecting it disables the saved content filters without deleting their values. Selecting a legacy source resets the smart filter to that preset, while a composed filter reports **Custom**.
 
 ---
 
 ## Date Filtering
 
-Use **Photo Filter → Filter by Date** in the web UI to limit photos by when they were taken. You can use either fixed dates, such as a specific holiday range, or a rolling range, such as the last 6 months.
+Use **Filters → Filter by Date** in the web UI to limit photos by when they were taken. You can use either fixed dates, such as a specific holiday range, or a rolling range, such as the last 6 months.
 
 Date filter changes save automatically shortly after you change a control. You do not need to click an Apply button.
+
+Date filtering is ignored while **Show Memories Only** is enabled; the **Memories Window** controls the calendar-day search instead. Your date-filter settings remain saved for when you turn Memories off.
 
 <!-- ESPFRAME:SETTINGS_TABLE date_filtering START -->
 | Setting | Default | Format | Description |

@@ -11,6 +11,7 @@ const liveHelpersSource = fs.readFileSync(path.join(root, "docs/webserver/src/li
 const backupImportSource = fs.readFileSync(path.join(root, "docs/webserver/src/backup_import.ts"), "utf8");
 const immichApiSource = fs.readFileSync(path.join(root, "common/addon/immich_api.yaml"), "utf8");
 const immichFilterSource = fs.readFileSync(path.join(root, "common/addon/immich_filter.yaml"), "utf8");
+const timeSource = fs.readFileSync(path.join(root, "common/addon/time.yaml"), "utf8");
 const immichConfigSource = fs.readFileSync(path.join(root, "common/addon/immich_config.yaml"), "utf8");
 const slideshowScreenSource = fs.readFileSync(
   path.join(root, "devices/guition-esp32-p4-jc8012p4a1/device/screen_slideshow.yaml"),
@@ -72,6 +73,20 @@ assert.ok(
 );
 assert.ok(publicApp.includes("customElements.define"), "public app should register its component root");
 assert.ok(publicApp.includes('"album_order"'), "public app should include album order in photo-source apply keys");
+assert.ok(
+  publicApp.includes("function makeMemoriesCard()") &&
+    publicApp.includes('makeCollapsibleCard("Memories"') &&
+    publicApp.includes('makeCollapsibleCard("Filters"') &&
+    publicApp.includes("Memories Window") &&
+    publicApp.includes("Fallback to All Photos") &&
+    publicApp.includes("Using Memories disables any configured filters"),
+  "photo settings should expose a dedicated Memories panel and disabled filter panel"
+);
+assert.ok(
+  publicApp.includes('toggle.setAttribute("aria-disabled", "true")') &&
+    publicApp.includes("control.disabled = true") &&
+  "photo filter UI should disable content controls while Memories is active"
+);
 assert.ok(publicApp.includes("Move up"), "public app should include album reorder controls");
 assert.ok(publicApp.includes("movePhotoIdRow"), "public app should keep photo ID and label rows reorderable");
 assert.ok(
@@ -143,6 +158,28 @@ assert.ok(
     immichApiSource.includes("metadata_cursor") &&
     immichApiSource.includes("parse_immich_metadata_next_cursor"),
   "album compatibility should retain legacy payload minimization and use structured cursors"
+);
+assert.ok(
+  immichApiSource.includes("/api/memories?type=on_this_day&for=") &&
+    immichApiSource.includes("immich_memories_window_days") &&
+    immichApiSource.includes("immich_memory_fallback_or_empty") &&
+    immichApiSource.includes("immich_memory_request_failed") &&
+    immichApiSource.includes("reset_retries_and_pause(millis())") &&
+    immichApiSource.includes("retry_available(MAX_ERROR_RETRIES)") &&
+    immichApiSource.includes("memory_fallback") &&
+    immichApiSource.includes("memory_request_is_current") &&
+    immichApiSource.includes("MemoriesJsonParser") &&
+    immichApiSource.includes("!id(sntp_time).now().is_valid()") &&
+    !immichApiSource.includes("JsonDocument filter"),
+  "Memories should use the On This Day API with a configurable window and fallback"
+);
+assert.ok(
+  filterFlush.includes("script.stop: immich_fetch_memory_window_day") &&
+    filterFlush.includes("script.stop: immich_memory_request_failed") &&
+    filterFlush.includes("invalidate_photo_source_requests") &&
+    filterFlush.indexOf("invalidate_photo_source_requests") < filterFlush.indexOf("Photo source apply deferred") &&
+    timeSource.includes("script.execute: immich_fetch_into_slot"),
+  "photo-source changes should invalidate Memories workers and retry after time sync"
 );
 assert.ok(
   filterFlush.includes("filter_apply_pending = true") &&
@@ -250,6 +287,18 @@ assert.ok(
     legacyPreset.includes('set_option(id(immich_tag_matching), "Any selected tag")'),
   "legacy preset adapter should reset tag matching only outside schema migration"
 );
+assert.ok(
+  legacyPreset.includes('if (source == "Memories")') &&
+    legacyPreset.includes("id(immich_memories_active) = true") &&
+    legacyPreset.includes("return;"),
+  "selecting Memories should activate the exclusive source without overwriting saved filters"
+);
+assert.ok(
+  legacyPreset.includes('if (source == "Custom") return;') &&
+    !legacyPreset.includes("was_memories") &&
+    !legacyPreset.includes('source == "All Photos" || source == "Custom"'),
+  "leaving Memories for a legacy source should apply its preset and clear active filters"
+);
 [
   "Match all enabled groups",
   "Any selected album",
@@ -262,7 +311,7 @@ assert.ok(
   );
 });
 // The legacy renderer remains available in authored source; the module bundler
-// omits it from the current UI because makePhotoSourceCard uses the smart filter.
+// omits it from the current UI because makeFiltersCard uses the smart filter.
 const immichCardsSource = fs.readFileSync(path.join(root, "docs/webserver/src/settings_immich_cards.ts"), "utf8");
 const photoSourceApply = immichCardsSource.slice(
   immichCardsSource.indexOf("function applyPhotoSourceInputs()"),

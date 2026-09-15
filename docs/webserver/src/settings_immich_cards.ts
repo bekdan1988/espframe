@@ -1,3 +1,106 @@
+  var syncMemoryFilterUi = function () {};
+
+  function makeMemoriesInfoBanner() {
+    var banner = el("div", "setting-info-banner");
+    banner.setAttribute("role", "note");
+    var icon = el("span", "setting-info-banner-icon");
+    icon.textContent = "i";
+    icon.setAttribute("aria-hidden", "true");
+    var message = el("span");
+    message.textContent = "Using Memories disables any configured filters";
+    banner.appendChild(icon);
+    banner.appendChild(message);
+    return banner;
+  }
+
+  function hasConfiguredPhotoFilters() {
+    return ["date_filter_enabled", "albums_enabled", "people_enabled", "tags_enabled",
+      "favorites_enabled", "rating_enabled", "location_enabled"].some(function (key) {
+        return !!S[key];
+      });
+  }
+
+  function makeMemoriesCard() {
+    var body = el("div");
+    var memoriesActive = S.photo_source === "Memories";
+    var infoBanner = makeMemoriesInfoBanner();
+    var memoriesBadge = makeBadge(memoriesActive);
+    var memoriesSecondaryFields = [];
+
+    function setMemoriesSecondaryVisibility(visible) {
+      infoBanner.style.display = visible ? "" : "none";
+      memoriesSecondaryFields.forEach(function (secondaryField) {
+        secondaryField.style.display = visible ? "" : "none";
+      });
+    }
+
+    var memoriesToggle = toggleSettingRow({
+      label: "Show Memories Only", value: memoriesActive,
+      getValue: function () { return memoriesActive; },
+      setValue: function (value) { memoriesActive = value; },
+      onChange: function (value) {
+        if (value) {
+          S.photo_source = "Memories";
+        } else {
+          S.photo_source = hasConfiguredPhotoFilters() ? "Custom" : "All Photos";
+        }
+        setBadgeActive(memoriesBadge, value);
+        setMemoriesSecondaryVisibility(value);
+        syncMemoryFilterUi();
+        saveSetting("photo_source", S.photo_source, { applyPhotoSource: true });
+      }
+    });
+    body.appendChild(infoBanner);
+    body.appendChild(memoriesToggle.field);
+
+    if (S.memories_migration_notice) {
+      var notice = el("div", "banner warning");
+      notice.textContent = "Memories is available again as an exclusive On This Day source. Choose it from this panel to enable it. ";
+      var dismiss = button("Dismiss", "btn btn-secondary", function () {
+        post(endpoints.memories_migration_notice + "/turn_off").then(function () {
+          S.memories_migration_notice = false;
+          notice.style.display = "none";
+        });
+      });
+      notice.appendChild(dismiss);
+      body.appendChild(notice);
+    }
+
+    var memoriesWindowField = field("Memories Window");
+    memoriesWindowField.appendChild(selectFromOptions(
+      productSettingOptions("memories_window"),
+      S.memories_window,
+      function (value) {
+        S.memories_window = value;
+        saveSetting("memories_window", value, { applyPhotoSource: true });
+      },
+      function (value) {
+        if (value === "Within 1 Day") return "±1 Day";
+        if (value === "Within 2 Days") return "±2 Days";
+        if (value === "Within 3 Days") return "±3 Days";
+        if (value === "Within 7 Days") return "±7 Days";
+        return value;
+      }
+    ));
+    body.appendChild(memoriesWindowField);
+    memoriesSecondaryFields.push(memoriesWindowField);
+
+    var memoriesFallbackRow = toggleSettingRow({
+      label: "Fallback to All Photos", value: !!S.memories_fallback,
+      getValue: function () { return !!S.memories_fallback; },
+      setValue: function (value) { S.memories_fallback = value; },
+      onChange: function (value) {
+        S.memories_fallback = value;
+        saveSetting("memories_fallback", value, { applyPhotoSource: true });
+      }
+    });
+    body.appendChild(memoriesFallbackRow.field);
+    memoriesSecondaryFields.push(memoriesFallbackRow.field);
+    setMemoriesSecondaryVisibility(memoriesActive);
+
+    return makeCollapsibleCard("Memories", body, true, memoriesBadge);
+  }
+
   function makeConnectionCard() {
     // Connection
     var connBody = el("div");
@@ -97,15 +200,18 @@
 
   }
 
-  function makeSmartPhotoFilterCard() {
+  function makeFiltersCard() {
     var body = el("div");
+    var memoriesActive = S.photo_source === "Memories";
+    var filterCard: HTMLElement;
     function filtersActive() {
-      return ["date_filter_enabled", "albums_enabled", "people_enabled", "tags_enabled",
-        "favorites_enabled", "rating_enabled", "location_enabled"].some(function (key) { return !!S[key]; });
+      return !memoriesActive && hasConfiguredPhotoFilters();
     }
     var filterBadge = makeBadge(filtersActive());
-    function updateFilterBadge() { setBadgeActive(filterBadge, filtersActive()); }
-    appendDateFilterControls(body, updateFilterBadge);
+    function updateFilterBadge() {
+      filterBadge.textContent = memoriesActive ? "Disabled" : "On";
+      filterBadge.className = "on-badge" + (filtersActive() || memoriesActive ? " active" : "");
+    }
     var version = String(S.immich_server_version || "Unknown");
     var parts = version.split(".").map(Number);
     var supportsStructured = parts.length >= 2 && isFinite(parts[0]) && isFinite(parts[1]) &&
@@ -115,24 +221,70 @@
       compatibilityUpdates.forEach(function (update) { update(); });
     }
 
-    if (S.memories_migration_notice) {
-      var notice = el("div", "banner warning");
-      notice.textContent = "Memories was replaced by an empty filter (All Photos). Use date rules to create a similar playlist. ";
-      var dismiss = button("Dismiss", "btn btn-secondary", function () {
-        post(endpoints.memories_migration_notice + "/turn_off").then(function () {
-          S.memories_migration_notice = false;
-          notice.style.display = "none";
-        });
-      });
-      notice.appendChild(dismiss);
-      body.appendChild(notice);
-    }
-
     function applySetting(key, value) {
       updateFilterBadge();
       updateCompatibility();
       return saveSetting(key, value, { applyPhotoSource: true });
     }
+    function updateMemoryFilterLock() {
+      var toggles = body.querySelectorAll('[role="switch"]');
+      Array.prototype.forEach.call(toggles, function (toggleEl) {
+        var toggle = toggleEl as HTMLElement & {
+          __memoryOriginalOnclick?: any; __memoryOriginalOnkeydown?: any;
+          __memoryOriginalAriaDisabled?: string | null; __memoryOriginalTabindex?: string | null;
+          __memoryOriginalOpacity?: string; __memoryOriginalCursor?: string; __memoryLocked?: boolean;
+        };
+        if (memoriesActive && !toggle.__memoryLocked) {
+          toggle.__memoryOriginalOnclick = toggle.onclick;
+          toggle.__memoryOriginalOnkeydown = toggle.onkeydown;
+          toggle.__memoryOriginalAriaDisabled = toggle.getAttribute("aria-disabled");
+          toggle.__memoryOriginalTabindex = toggle.getAttribute("tabindex");
+          toggle.__memoryOriginalOpacity = toggle.style.opacity;
+          toggle.__memoryOriginalCursor = toggle.style.cursor;
+          toggle.__memoryLocked = true;
+        }
+        if (memoriesActive) {
+          toggle.setAttribute("aria-disabled", "true");
+          toggle.setAttribute("tabindex", "-1");
+          toggle.style.opacity = ".35";
+          toggle.style.cursor = "not-allowed";
+          toggle.onclick = function () {};
+          toggle.onkeydown = function (event) { event.preventDefault(); };
+        } else if (toggle.__memoryLocked) {
+          if (toggle.__memoryOriginalAriaDisabled == null) toggle.removeAttribute("aria-disabled");
+          else toggle.setAttribute("aria-disabled", toggle.__memoryOriginalAriaDisabled);
+          if (toggle.__memoryOriginalTabindex == null) toggle.removeAttribute("tabindex");
+          else toggle.setAttribute("tabindex", toggle.__memoryOriginalTabindex);
+          toggle.style.opacity = toggle.__memoryOriginalOpacity || "";
+          toggle.style.cursor = toggle.__memoryOriginalCursor || "";
+          toggle.onclick = toggle.__memoryOriginalOnclick;
+          toggle.onkeydown = toggle.__memoryOriginalOnkeydown;
+          delete toggle.__memoryLocked;
+        }
+      });
+      var controls = body.querySelectorAll("select, input, button");
+      Array.prototype.forEach.call(controls, function (controlEl) {
+        var control = controlEl as HTMLSelectElement & { __memoryOriginalDisabled?: boolean; __memoryLocked?: boolean };
+        if (control.closest(".banner")) return;
+        if (memoriesActive && !control.__memoryLocked) {
+          control.__memoryOriginalDisabled = control.disabled;
+          control.__memoryLocked = true;
+        }
+        if (memoriesActive) control.disabled = true;
+        else if (control.__memoryLocked) {
+          control.disabled = !!control.__memoryOriginalDisabled;
+          delete control.__memoryLocked;
+        }
+      });
+      if (filtersInfoBanner) filtersInfoBanner.style.display = memoriesActive ? "" : "none";
+      if (filterCard) filterCard.classList.toggle("memory-filter-disabled", memoriesActive);
+      updateFilterBadge();
+    }
+
+    var filtersInfoBanner = makeMemoriesInfoBanner();
+    filtersInfoBanner.style.display = memoriesActive ? "" : "none";
+    body.appendChild(filtersInfoBanner);
+    appendDateFilterControls(body, updateFilterBadge);
     function addSelect(label, key, disabled, reason, recoveryValue?) {
       var f = field(label);
       var control = selectFromOptions(productSettingOptions(key), S[key], function (value) {
@@ -343,11 +495,13 @@
     });
     locationDetails.style.display = S.location_enabled ? "" : "none";
     body.appendChild(locationDetails);
-    return makeCollapsibleCard("Photo Filter", body, true, filterBadge);
-  }
-
-  function makePhotoSourceCard() {
-    return makeSmartPhotoFilterCard();
+    filterCard = makeCollapsibleCard("Filters", body, true, filterBadge);
+    syncMemoryFilterUi = function () {
+      memoriesActive = S.photo_source === "Memories";
+      updateMemoryFilterLock();
+    };
+    syncMemoryFilterUi();
+    return filterCard;
   }
 
   function makeLegacyPhotoSourceCard() {

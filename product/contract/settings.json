@@ -6,7 +6,8 @@
       "name": "Photos: Source"
     },
     "default": "All Photos",
-    "docs_description": "Choose all photos, favorites, albums, people, tags, or Immich memories.",
+    "docs_label": "Photo Source (legacy compatibility)",
+    "docs_description": "Legacy compatibility source value; enable Memories from the dedicated Memories panel and use the Filters panel for the remaining photo sources.",
     "options": [
       "All Photos",
       "Favorites",
@@ -16,6 +17,48 @@
       "Memories",
       "Custom"
     ],
+    "firmware_files": [
+      "common/addon/immich_filter.yaml"
+    ],
+    "docs_files": [
+      "docs/photo-sources.md"
+    ]
+  },
+  {
+    "key": "memories_window",
+    "entity": {
+      "domain": "select",
+      "name": "Photos: Memories Window"
+    },
+    "default": "Within 2 Days",
+    "docs_label": "Memories Window",
+    "docs_default": "`±2 Days`",
+    "docs_format": "`Same Day`, `±1 Day`, `±2 Days`, `±3 Days`, or `±7 Days`",
+    "docs_description": "When Memories is enabled, search this calendar-day window across prior years.",
+    "options": [
+      "Same Day",
+      "Within 1 Day",
+      "Within 2 Days",
+      "Within 3 Days",
+      "Within 7 Days"
+    ],
+    "firmware_files": [
+      "common/addon/immich_filter.yaml"
+    ],
+    "docs_files": [
+      "docs/photo-sources.md"
+    ]
+  },
+  {
+    "key": "memories_fallback",
+    "entity": {
+      "domain": "switch",
+      "name": "Photos: Memories Fallback"
+    },
+    "default": true,
+    "docs_label": "Fallback to All Photos",
+    "docs_default": "On",
+    "docs_description": "When Memories has no result or fails, show an unfiltered All Photos result.",
     "firmware_files": [
       "common/addon/immich_filter.yaml"
     ],
@@ -51,7 +94,7 @@
     },
     "default": "Any selected tag",
     "docs_label": "Legacy Tag Matching",
-    "docs_description": "Legacy compatibility value; the Photo Filter always uses any selected tag.",
+    "docs_description": "Legacy compatibility value; the Filters panel always uses any selected tag.",
     "options": [
       "Any selected tag",
       "All selected tags"
@@ -790,7 +833,7 @@
     "entity": { "domain": "select", "name": "Photos: Album Matching" },
     "default": "Any selected album",
     "options": ["Any selected album", "All selected albums"],
-    "docs_description": "Legacy compatibility value; the Photo Filter always uses any selected album.",
+    "docs_description": "Legacy compatibility value; the Filters panel always uses any selected album.",
     "firmware_files": ["common/addon/immich_filter.yaml"],
     "docs_files": ["docs/photo-sources.md"]
   },
@@ -799,7 +842,7 @@
     "entity": { "domain": "select", "name": "Photos: Person Matching" },
     "default": "Any selected person",
     "options": ["Any selected person", "All selected people"],
-    "docs_description": "Legacy compatibility value; the Photo Filter always uses any selected person.",
+    "docs_description": "Legacy compatibility value; the Filters panel always uses any selected person.",
     "firmware_files": ["common/addon/immich_filter.yaml"],
     "docs_files": ["docs/photo-sources.md"]
   },
