@@ -175,7 +175,7 @@
     return getConfigurationSnapshot().then(function (snapshot) {
       applyConfigurationSnapshot(snapshot);
     }).catch(function (error) {
-      if (!isConfigurationApiUnavailable(error)) throw error;
+      if (!error.legacy) throw error;
       return fetchLegacyDeviceSettingsState();
     });
   }
@@ -183,7 +183,7 @@
   function fetchLegacyDeviceSettingsState() {
     // The configuration API's key list intentionally omits connection secrets.
     // Legacy devices still need these two reads to distinguish setup from an
-    // already-configured frame when SSE is unavailable.
+    // already-configured frame. New firmware reports only api_key_configured.
     var legacyKeys = ["immich_url", "api_key"].concat(INITIAL_FETCH_KEYS);
     var urls = legacyKeys.map(function (k) {
       if (!endpoints[k]) {
@@ -196,6 +196,13 @@
       for (var i = 0; i < res.length; i++) {
         var data = res[i];
         if (!data) continue;
+        if (legacyKeys[i] === "api_key") {
+          var configured = typeof data.api_key_configured === "boolean"
+            ? data.api_key_configured
+            : !!String(data.value || "");
+          settingSaves.receive("api_key_configured", configured);
+          continue;
+        }
         applyEntityToState({
           id: getEntityIdForStateKey(legacyKeys[i]),
           value: data.value,

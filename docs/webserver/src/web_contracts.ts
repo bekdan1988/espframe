@@ -2,9 +2,8 @@ type ConfigurationValue = string | number | boolean;
 type ConfigurationValues = Record<string, ConfigurationValue>;
 
 interface ConfigurationSnapshot {
-  api_version: number;
+  api_key_configured: boolean;
   values: ConfigurationValues;
-  unavailable: string[];
 }
 
 interface ConfigurationUpdateResponse {
@@ -33,6 +32,7 @@ interface RuntimeState {
   brightness: number;
   brightness_current: number;
   backlight_on: boolean;
+  api_key_configured: boolean;
   installed_version: string;
   latest_version: string;
   update_available: boolean;
@@ -69,19 +69,26 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 function parseConfigurationSnapshot(value: unknown): ConfigurationSnapshot | null {
-  if (!isObject(value) || value.api_version !== 1 || !isObject(value.values) || !Array.isArray(value.unavailable)) {
+  if (!isObject(value) || value.api_version !== 1 ||
+      !isObject(value.values) || !Array.isArray(value.unavailable)) {
     return null;
   }
+  var apiKeyConfigured = value.api_key_configured as boolean;
   var values: ConfigurationValues = {};
   for (var entry of Object.entries(value.values)) {
-    var fieldValue = entry[1];
+    var key = entry[0], fieldValue = entry[1];
+    if (key === "api_key") {
+      if (apiKeyConfigured != null) return null;
+      apiKeyConfigured = !!fieldValue;
+      continue;
+    }
     if (typeof fieldValue !== "string" && typeof fieldValue !== "number" && typeof fieldValue !== "boolean") {
       return null;
     }
-    values[entry[0]] = fieldValue;
+    values[key] = fieldValue;
   }
-  if (!value.unavailable.every(function (key): key is string { return typeof key === "string"; })) return null;
-  return { api_version: 1, values: values, unavailable: value.unavailable };
+  if (!value.unavailable.every(key => typeof key === "string")) return null;
+  return { api_key_configured: apiKeyConfigured, values: values };
 }
 
 function configurationUpdateBody(values: ConfigurationValues): string {
@@ -92,6 +99,7 @@ function configurationUpdateBody(values: ConfigurationValues): string {
 
 interface ConfigurationError extends Error {
   configurationApiUnavailable?: boolean;
+  legacy?: boolean;
   configurationApiResponse?: boolean;
   field?: string;
 }

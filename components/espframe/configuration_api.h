@@ -31,6 +31,7 @@ class ConfigurationApiHandler final : public AsyncWebHandler {
   explicit ConfigurationApiHandler(ConfigurationUpdateScheduler *scheduler) : scheduler_(scheduler) {}
 
   bool canHandle(AsyncWebServerRequest *request) const override {
+    if (this->is_secret_text_get_(request)) return true;
 #ifdef USE_ESP32
     char url_buffer[AsyncWebServerRequest::URL_BUF_SIZE];
     StringRef url = request->url_to(url_buffer);
@@ -43,6 +44,10 @@ class ConfigurationApiHandler final : public AsyncWebHandler {
   }
 
   void handleRequest(AsyncWebServerRequest *request) override {
+    if (this->is_secret_text_get_(request)) {
+      this->send_secret_text_(request);
+      return;
+    }
 #ifdef USE_ESP32
     char url_buffer[AsyncWebServerRequest::URL_BUF_SIZE];
     StringRef url = request->url_to(url_buffer);
@@ -73,10 +78,60 @@ class ConfigurationApiHandler final : public AsyncWebHandler {
     bool bool_value{false};
   };
 
+  bool is_secret_text_get_(AsyncWebServerRequest *request) const {
+    if (request->method() != HTTP_GET) return false;
+#ifdef USE_ESP32
+    char url_buffer[AsyncWebServerRequest::URL_BUF_SIZE];
+    StringRef url = request->url_to(url_buffer);
+#else
+    const auto &url = request->url();
+#endif
+    for (const auto &field : contract::CONFIGURATION_FIELDS) {
+      if (!field.secret || std::strcmp(field.domain, "text") != 0) continue;
+      std::string path = "/text/";
+      path += field.entity_name;
+      const auto encoded_path = this->encode_url_path_(path);
+      if (url == path.c_str() || url == encoded_path.c_str()) return true;
+    }
+    return false;
+  }
+
+  static std::string encode_url_path_(const std::string &path) {
+    static constexpr char HEX[] = "0123456789ABCDEF";
+    std::string encoded;
+    encoded.reserve(path.size());
+    for (const unsigned char character : path) {
+      const bool unreserved = (character >= 'a' && character <= 'z') ||
+                              (character >= 'A' && character <= 'Z') ||
+                              (character >= '0' && character <= '9') ||
+                              character == '-' || character == '_' || character == '.' || character == '~';
+      if (unreserved) {
+        encoded += static_cast<char>(character);
+      } else {
+        encoded += '%';
+        encoded += HEX[character >> 4];
+        encoded += HEX[character & 0x0F];
+      }
+    }
+    return encoded;
+  }
+
+  void send_secret_text_(AsyncWebServerRequest *request) const {
+    json::JsonBuilder builder;
+    JsonObject root = builder.root();
+    const bool configured = this->secret_configured_();
+    root["value"] = "";
+    root["state"] = configured ? "********" : "";
+    root["api_key_configured"] = configured;
+    const auto payload = builder.serialize();
+    request->send(200, "application/json", payload.c_str());
+  }
+
   void send_configuration_(AsyncWebServerRequest *request) const {
     json::JsonBuilder builder;
     JsonObject root = builder.root();
     root["api_version"] = contract::API_VERSION;
+    root["api_key_configured"] = this->secret_configured_();
     JsonObject values = root["values"].to<JsonObject>();
     JsonArray unavailable = root["unavailable"].to<JsonArray>();
     for (const auto &field : contract::CONFIGURATION_FIELDS) {
@@ -94,6 +149,12 @@ class ConfigurationApiHandler final : public AsyncWebHandler {
   }
 
   bool write_field_value_(JsonObject values, const contract::ConfigurationField &field) const {
+    // Secret fields remain writable through the versioned API but are never
+    // serialized into its response.
+    if (field.secret) {
+      if (std::strcmp(field.domain, "text") != 0) return false;
+      return find_entity_<text::Text>(App.get_texts(), field.entity_name) != nullptr;
+    }
     if (std::strcmp(field.domain, "select") == 0) {
       auto *entity = find_entity_<select::Select>(App.get_selects(), field.entity_name);
       if (entity == nullptr) return false;
@@ -117,6 +178,15 @@ class ConfigurationApiHandler final : public AsyncWebHandler {
       if (entity == nullptr) return false;
       values[field.key] = entity->state;
       return true;
+    }
+    return false;
+  }
+
+  bool secret_configured_() const {
+    for (const auto &field : contract::CONFIGURATION_FIELDS) {
+      if (!field.secret || std::strcmp(field.domain, "text") != 0) continue;
+      auto *entity = find_entity_<text::Text>(App.get_texts(), field.entity_name);
+      if (entity != nullptr) return !entity->state.empty();
     }
     return false;
   }
