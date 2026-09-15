@@ -48,6 +48,10 @@
     {
       "name": "map.read",
       "purpose": "Additional GPS/map data beyond EXIF"
+    },
+    {
+      "name": "memory.read",
+      "purpose": "Read Immich On This Day Memories"
     }
   ],
   "immich_server_url_schemes": [
@@ -161,6 +165,8 @@
     ],
     "photos": [
       "source",
+      "memories_window",
+      "memories_fallback",
       "albums_enabled",
       "people_enabled",
       "tags_enabled",
@@ -238,6 +244,8 @@
     },
     "photos": {
       "source": "photo_source",
+      "memories_window": "memories_window",
+      "memories_fallback": "memories_fallback",
       "albums_enabled": "albums_enabled",
       "people_enabled": "people_enabled",
       "tags_enabled": "tags_enabled",
@@ -457,8 +465,8 @@
   ],
   "photo_source_auto_apply_behavior": "Changes apply automatically shortly after you change a control",
   "photo_source_id_limit": 255,
-  "photo_source_memories_window": "",
-  "photo_source_memories_fallback": "",
+  "photo_source_memories_window": "Same Day through ±7 Days; default ±2 Days; matched across prior years",
+  "photo_source_memories_fallback": "Falls back to unfiltered All Photos when the selected Memories window has no result or the Memories request fails",
   "photo_source_album_person_sampling": "sampled through paged Immich search",
   "slideshow_check_interval": "2s",
   "slideshow_interval_default_seconds": 15,
@@ -633,10 +641,24 @@
       ]
     },
     {
-      "id": "photo_source",
-      "label": "Photo Filter",
+      "id": "memories",
+      "label": "Memories",
       "tab": "immich",
-      "function": "makePhotoSourceCard",
+      "function": "makeMemoriesCard",
+      "settings": [
+        "memories_window",
+        "memories_fallback"
+      ],
+      "static_entities": [
+        "memories_migration_notice"
+      ],
+      "manual_entities": []
+    },
+    {
+      "id": "photo_source",
+      "label": "Filters",
+      "tab": "immich",
+      "function": "makeFiltersCard",
       "settings": [
         "photo_source",
         "albums_enabled",
@@ -676,8 +698,7 @@
         "excluded_tag_ids",
         "excluded_tag_labels",
         "immich_server_version",
-        "immich_capability_status",
-        "memories_migration_notice"
+        "immich_capability_status"
       ],
       "manual_entities": [
         "apply_photo_source"
@@ -1159,6 +1180,8 @@
         ],
         "settings": [
           "photo_source",
+          "memories_window",
+          "memories_fallback",
           "albums_enabled",
           "people_enabled",
           "tags_enabled",
@@ -1552,6 +1575,8 @@
   ],
   "generated_firmware_setting_fields": {
     "photo_source": {},
+    "memories_window": {},
+    "memories_fallback": {},
     "album_order": {},
     "tag_matching": {},
     "albums_enabled": {},

@@ -49,6 +49,10 @@
       {
         "name": "map.read",
         "purpose": "Additional GPS/map data beyond EXIF"
+      },
+      {
+        "name": "memory.read",
+        "purpose": "Read Immich On This Day Memories"
       }
     ],
     "immich_server_url_schemes": [
@@ -162,6 +166,8 @@
       ],
       "photos": [
         "source",
+        "memories_window",
+        "memories_fallback",
         "albums_enabled",
         "people_enabled",
         "tags_enabled",
@@ -239,6 +245,8 @@
       },
       "photos": {
         "source": "photo_source",
+        "memories_window": "memories_window",
+        "memories_fallback": "memories_fallback",
         "albums_enabled": "albums_enabled",
         "people_enabled": "people_enabled",
         "tags_enabled": "tags_enabled",
@@ -458,8 +466,8 @@
     ],
     "photo_source_auto_apply_behavior": "Changes apply automatically shortly after you change a control",
     "photo_source_id_limit": 255,
-    "photo_source_memories_window": "",
-    "photo_source_memories_fallback": "",
+    "photo_source_memories_window": "Same Day through ±7 Days; default ±2 Days; matched across prior years",
+    "photo_source_memories_fallback": "Falls back to unfiltered All Photos when the selected Memories window has no result or the Memories request fails",
     "photo_source_album_person_sampling": "sampled through paged Immich search",
     "slideshow_check_interval": "2s",
     "slideshow_interval_default_seconds": 15,
@@ -634,10 +642,24 @@
         ]
       },
       {
-        "id": "photo_source",
-        "label": "Photo Filter",
+        "id": "memories",
+        "label": "Memories",
         "tab": "immich",
-        "function": "makePhotoSourceCard",
+        "function": "makeMemoriesCard",
+        "settings": [
+          "memories_window",
+          "memories_fallback"
+        ],
+        "static_entities": [
+          "memories_migration_notice"
+        ],
+        "manual_entities": []
+      },
+      {
+        "id": "photo_source",
+        "label": "Filters",
+        "tab": "immich",
+        "function": "makeFiltersCard",
         "settings": [
           "photo_source",
           "albums_enabled",
@@ -677,8 +699,7 @@
           "excluded_tag_ids",
           "excluded_tag_labels",
           "immich_server_version",
-          "immich_capability_status",
-          "memories_migration_notice"
+          "immich_capability_status"
         ],
         "manual_entities": [
           "apply_photo_source"
@@ -1160,6 +1181,8 @@
           ],
           "settings": [
             "photo_source",
+            "memories_window",
+            "memories_fallback",
             "albums_enabled",
             "people_enabled",
             "tags_enabled",
@@ -1553,6 +1576,8 @@
     ],
     "generated_firmware_setting_fields": {
       "photo_source": {},
+      "memories_window": {},
+      "memories_fallback": {},
       "album_order": {},
       "tag_matching": {},
       "albums_enabled": {},
@@ -2266,7 +2291,8 @@
         "name": "Photos: Source"
       },
       "default": "All Photos",
-      "docs_description": "Choose all photos, favorites, albums, people, tags, or Immich memories.",
+      "docs_label": "Photo Source (legacy compatibility)",
+      "docs_description": "Legacy compatibility source value; enable Memories from the dedicated Memories panel and use the Filters panel for the remaining photo sources.",
       "options": [
         "All Photos",
         "Favorites",
@@ -2276,6 +2302,48 @@
         "Memories",
         "Custom"
       ],
+      "firmware_files": [
+        "common/addon/immich_filter.yaml"
+      ],
+      "docs_files": [
+        "docs/photo-sources.md"
+      ]
+    },
+    {
+      "key": "memories_window",
+      "entity": {
+        "domain": "select",
+        "name": "Photos: Memories Window"
+      },
+      "default": "Within 2 Days",
+      "docs_label": "Memories Window",
+      "docs_default": "`±2 Days`",
+      "docs_format": "`Same Day`, `±1 Day`, `±2 Days`, `±3 Days`, or `±7 Days`",
+      "docs_description": "When Memories is enabled, search this calendar-day window across prior years.",
+      "options": [
+        "Same Day",
+        "Within 1 Day",
+        "Within 2 Days",
+        "Within 3 Days",
+        "Within 7 Days"
+      ],
+      "firmware_files": [
+        "common/addon/immich_filter.yaml"
+      ],
+      "docs_files": [
+        "docs/photo-sources.md"
+      ]
+    },
+    {
+      "key": "memories_fallback",
+      "entity": {
+        "domain": "switch",
+        "name": "Photos: Memories Fallback"
+      },
+      "default": true,
+      "docs_label": "Fallback to All Photos",
+      "docs_default": "On",
+      "docs_description": "When Memories has no result or fails, show an unfiltered All Photos result.",
       "firmware_files": [
         "common/addon/immich_filter.yaml"
       ],
@@ -2311,7 +2379,7 @@
       },
       "default": "Any selected tag",
       "docs_label": "Legacy Tag Matching",
-      "docs_description": "Legacy compatibility value; the Photo Filter always uses any selected tag.",
+      "docs_description": "Legacy compatibility value; the Filters panel always uses any selected tag.",
       "options": [
         "Any selected tag",
         "All selected tags"
@@ -3110,7 +3178,7 @@
         "Any selected album",
         "All selected albums"
       ],
-      "docs_description": "Legacy compatibility value; the Photo Filter always uses any selected album.",
+      "docs_description": "Legacy compatibility value; the Filters panel always uses any selected album.",
       "firmware_files": [
         "common/addon/immich_filter.yaml"
       ],
@@ -3129,7 +3197,7 @@
         "Any selected person",
         "All selected people"
       ],
-      "docs_description": "Legacy compatibility value; the Photo Filter always uses any selected person.",
+      "docs_description": "Legacy compatibility value; the Filters panel always uses any selected person.",
       "firmware_files": [
         "common/addon/immich_filter.yaml"
       ],

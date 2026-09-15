@@ -20,6 +20,7 @@ static constexpr uint16_t IMMICH_METADATA_PAGE_SIZE = 5;
 static constexpr uint16_t IMMICH_RANDOM_POOL_SIZE = 6;
 static constexpr uint16_t IMMICH_COMPANION_SEARCH_SIZE = 20;
 static constexpr uint8_t IMMICH_CAPABILITY_DISCOVERY_MAX_ATTEMPTS = 3;
+static constexpr uint8_t IMMICH_MEMORY_RETRY_LIMIT = 8;
 // Refresh server-derived counts so album additions and removals become visible
 // without sacrificing the request savings across normal slideshow advances.
 static constexpr uint32_t IMMICH_METADATA_COUNT_CACHE_TTL_MS = 15UL * 60UL * 1000UL;
@@ -426,8 +427,13 @@ struct ImmichRequestState {
 
   bool memory_fallback = false;
   std::string memory_asset_id;
+  std::vector<std::string> memory_rejected_asset_ids;
   int memory_window_offset = -2;
+  int memory_window_radius = 2;
   int memory_image_count = 0;
+  bool memory_waiting_for_time = false;
+  bool memory_asset_loaded = false;
+  bool memory_request_failed = false;
 
   std::string metadata_album_id;
   std::string metadata_person_id;
@@ -453,6 +459,8 @@ struct ImmichRequestState {
   uint32_t filter_scope_generation = 0;
   uint32_t photo_source_generation = 0;
   uint32_t random_request_generation = 0;
+  uint32_t memory_request_generation = 0;
+  uint32_t memory_source_generation = 0;
   std::string server_version;
   ImmichApiGeneration api_generation = ImmichApiGeneration::V31_FLAT;
   bool server_version_discovered = false;
@@ -478,6 +486,29 @@ struct ImmichRequestState {
 
   bool random_request_is_current() const {
     return this->random_request_generation == this->photo_source_generation;
+  }
+
+  void begin_memory_search(int window_radius_days = 2, bool reset_rejected = true) {
+    this->memory_request_generation++;
+    this->memory_source_generation = this->photo_source_generation;
+    this->memory_fallback = false;
+    this->memory_asset_id.clear();
+    if (reset_rejected) this->memory_rejected_asset_ids.clear();
+    this->memory_window_radius = std::max(0, std::min(window_radius_days, 7));
+    this->memory_window_offset = -this->memory_window_radius;
+    this->memory_image_count = 0;
+    this->memory_waiting_for_time = false;
+    this->memory_asset_loaded = false;
+    this->memory_request_failed = false;
+  }
+
+  bool memory_request_is_current() const {
+    return this->memory_source_generation == this->photo_source_generation;
+  }
+
+  bool memory_request_is_current(uint32_t request_generation) const {
+    return request_generation == this->memory_request_generation &&
+           this->memory_source_generation == this->photo_source_generation;
   }
 
   void begin_filter_scope_request(int slot, const std::string &asset_id,
@@ -576,16 +607,9 @@ struct ImmichRequestState {
     this->metadata_count_cache.push_back({key, total, count_is_upper_bound, now_ms});
   }
 
-  void begin_memory_search() {
-    this->memory_fallback = false;
-    this->memory_asset_id.clear();
-    this->memory_window_offset = -2;
-    this->memory_image_count = 0;
-  }
-
   bool advance_memory_window() {
     this->memory_window_offset++;
-    return this->memory_window_offset <= 2;
+    return this->memory_window_offset <= this->memory_window_radius;
   }
 
   // Reservoir sampling (Algorithm R, k=1): keep one candidate and replace it with
@@ -596,8 +620,20 @@ struct ImmichRequestState {
   // buffers alive at the same time. That aborts on devices whose largest free
   // internal-DRAM block is smaller than the pair. This is O(1) and picks
   // uniformly, exactly as selecting a random index into the full list did.
-  void add_memory_image(const std::string &asset_id) {
+  bool reject_memory_asset(const std::string &asset_id) {
+    if (asset_id.empty()) return false;
+    if (std::find(this->memory_rejected_asset_ids.begin(), this->memory_rejected_asset_ids.end(), asset_id) !=
+        this->memory_rejected_asset_ids.end()) return false;
+    if (this->memory_rejected_asset_ids.size() >= IMMICH_MEMORY_RETRY_LIMIT) return false;
+    this->memory_rejected_asset_ids.push_back(asset_id);
+    return true;
+  }
+
+  void add_memory_image(const std::string &asset_id, bool orientation_matches = true) {
     if (asset_id.empty()) return;
+    if (!orientation_matches) return;
+    if (std::find(this->memory_rejected_asset_ids.begin(), this->memory_rejected_asset_ids.end(), asset_id) !=
+        this->memory_rejected_asset_ids.end()) return;
     this->memory_image_count++;
     if (esp_random() % static_cast<uint32_t>(this->memory_image_count) == 0) {
       this->memory_asset_id = asset_id;
@@ -1175,14 +1211,30 @@ inline bool immich_source_has_required_ids(const std::string &photo_source,
   return true;
 }
 
+inline bool immich_memories_source_active(const std::string &photo_source) {
+  return photo_source == "Memories";
+}
+
+inline int immich_memories_window_days(const std::string &option) {
+  if (option.find('7') != std::string::npos) return 7;
+  if (option.find('3') != std::string::npos) return 3;
+  if (option.find('2') != std::string::npos) return 2;
+  if (option.find('1') != std::string::npos) return 1;
+  return 0;
+}
+
 inline std::string immich_source_setup_title(const std::string &photo_source) {
   if (photo_source == "Album") return "Album source needs setup";
   if (photo_source == "Person") return "Person source needs setup";
   if (photo_source == "Tag") return "Tag source needs setup";
+  if (photo_source == "Memories") return "No Memories found";
   return "Photo source needs setup";
 }
 
 inline std::string immich_source_setup_message(const std::string &photo_source) {
+  if (photo_source == "Memories") {
+    return "Immich has no On This Day photos in the selected window. Enable fallback or choose All Photos.";
+  }
   if (photo_source == "Custom") {
     return "Open ESPFrame settings and add IDs to every enabled group, or choose All Photos.";
   }
@@ -1206,6 +1258,18 @@ inline bool immich_dimensions_are_portrait(int width, int height,
     std::swap(width, height);
   }
   return height > width;
+}
+
+inline bool immich_memory_asset_matches_orientation(
+    int width, int height, const std::string &orientation,
+    bool dimensions_are_raw_exif, const std::string &orientation_filter) {
+  if (orientation_filter == "Any") return true;
+  if (width <= 0 || height <= 0) return false;
+  const bool portrait = immich_dimensions_are_portrait(
+      width, height, orientation, dimensions_are_raw_exif);
+  if (orientation_filter == "Portrait Only") return portrait;
+  if (orientation_filter == "Landscape Only") return !portrait;
+  return true;
 }
 
 inline std::string build_immich_search_body(int size, bool with_people,
