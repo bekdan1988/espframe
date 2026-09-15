@@ -1,6 +1,6 @@
 ## What changes when merged
 
-- 
+-
 
 ## Automated checks
 
@@ -23,4 +23,4 @@ Result/notes:
 
 ## Notes for reviewers
 
-- 
+-
