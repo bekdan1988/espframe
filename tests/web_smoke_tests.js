@@ -600,6 +600,19 @@ function browserScriptForScenario(scenario) {
           json: () => Promise.resolve({ value: "v1.0.1", state: "UPDATE AVAILABLE", current_version: ${JSON.stringify(installedFirmwareVersion)}, latest_version: "v1.0.1" })
         });
       }
+      if (decoded === "/espframe/api/v1/capabilities") {
+        if (${JSON.stringify(!!scenario.legacyApi)}) {
+          return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
+          contract_version: 2, api_version: 1, base_path: "/espframe/api/v1",
+          capabilities_path: "/espframe/api/v1/capabilities",
+          configuration_path: "/espframe/api/v1/configuration", update_mode: "atomic",
+          configuration_available: true, configuration_read: true, configuration_write: true,
+          configuration_encoding: "application/x-www-form-urlencoded", configuration_parameter: "configuration",
+          legacy_entity_api: true, backup_versions: [1, 2, 3], setting_count: 52
+        }) });
+      }
       const endpointName = endpointNameForUrl(decoded);
       const value = endpointName ? endpointValues[endpointName] : "";
       const state = value === true ? "ON" : value === false ? "OFF" : String(value);
@@ -1775,6 +1788,9 @@ function smokeAssertionsForScenario(scenario) {
               new URLSearchParams(record.body).get("value") === second), 6000, "second queued connection save");
             if (input.value !== second) throw new Error("Older connection save overwrote the newer input");
             await waitFor(() => pageText().includes("URL saved"), 4000, "verified connection save");
+            if (pageText().includes("Failed to save setting") || pageText().includes("Failed to save URL")) {
+              throw new Error("Overlapping URL saves produced a spurious failure");
+            }
           }
 
           if (${JSON.stringify(scenario.name)} === "settings-accessibility") {
