@@ -1,11 +1,11 @@
 ---
-title: Contributing to Espframe
-description: How to propose and test documentation, firmware, and web interface changes for Espframe.
+title: Contributing to EspFrame
+description: How to propose and test documentation, firmware, and web interface changes for EspFrame.
 ---
 
-# Contributing to Espframe
+# Contributing to EspFrame
 
-Thanks for wanting to help improve Espframe. Contributions can improve the firmware, the device web interface, documentation, or the tools that keep generated files in sync.
+Thanks for wanting to help improve EspFrame. Contributions can improve the firmware, the device web interface, documentation, or the tools that keep generated files in sync.
 
 The [developer setup in the repository README](https://github.com/jtenniswood/espframe#development) covers the local docs server and firmware builds. The [testing guide](https://github.com/jtenniswood/espframe/blob/main/docs/testing.md) lists the project checks, and [source ownership](https://github.com/jtenniswood/espframe/blob/main/docs/source-ownership.md) explains which files are generated and where to make their source changes.
 
@@ -13,7 +13,7 @@ The [developer setup in the repository README](https://github.com/jtenniswood/es
 
 - Check the [open issues](https://github.com/jtenniswood/espframe/issues) for existing discussions.
 - Keep each pull request focused so it is easier to review and test. For a larger feature or a change that affects device behavior, open an issue first to agree on the approach.
-- Update the documentation when a change affects how people install or use Espframe.
+- Update the documentation when a change affects how people install or use EspFrame.
 - Keep existing device support, saved settings, and Home Assistant entity names compatible unless a breaking change has been discussed first.
 - If a file is generated or vendored, follow the source ownership guidance instead of editing generated output directly.
 
