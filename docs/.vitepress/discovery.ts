@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs'
 const internalDocumentation = new Set([
   'repository-governance',
   'source-ownership',
-  'testing',
 ])
 
 function pageSlug(url: string): string {

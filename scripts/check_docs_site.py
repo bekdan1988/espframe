@@ -18,7 +18,6 @@ BASE_PATH = "/espframe"
 NON_SEARCHABLE = {
     "repository-governance",
     "source-ownership",
-    "testing",
 }
 
 
