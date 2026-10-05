@@ -73,6 +73,19 @@ ImageFormat = remote_image_ns.enum("ImageFormat")
 HorizontalAlignment = remote_image_ns.enum("HorizontalAlignment")
 
 
+def _register_decoder_idf_component(name: str, path: str) -> None:
+    """Declare bundled libraries as managed components on ESP32 targets."""
+    if not CORE.is_esp32:
+        return
+    try:
+        from esphome.components.esp32 import add_idf_component
+    except ImportError:
+        # Older ESPHome releases include the copied component directories
+        # without requiring them from the generated main component.
+        return
+    add_idf_component(name=name, path=path)
+
+
 class Format:
     """Small strategy object for enabling the decoder needed by each format."""
 
@@ -119,6 +132,7 @@ class JPEGFormat(Format):
             if os.path.exists(dest_path):
                 shutil.rmtree(dest_path)
             shutil.copytree(src_path, dest_path)
+        _register_decoder_idf_component("libjpeg-turbo-esp32", dest_path)
 
 
 class PNGFormat(Format):
@@ -151,6 +165,7 @@ class WebPFormat(Format):
             if os.path.exists(dest_path):
                 shutil.rmtree(dest_path)
             shutil.copytree(src_path, dest_path)
+        _register_decoder_idf_component("libwebp-esp32", dest_path)
 
 
 class AutoFormat(Format):

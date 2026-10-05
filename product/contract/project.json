@@ -1,9 +1,9 @@
 {
-  "name": "Espframe for Immich",
+  "name": "EspFrame for Immich",
   "site_description": "Standalone Immich-powered digital photo frame on ESP32-P4",
   "ai_description": "Standalone digital photo frame firmware that displays a self-hosted Immich photo library on an ESP32-P4 10\" touchscreen. No hub, cloud, or extra software required. Built with ESPHome.",
   "social_image": "espframe.png",
-  "social_image_alt": "Espframe displaying Immich photos on a Guition ESP32-P4 touchscreen",
+  "social_image_alt": "EspFrame displaying Immich photos on a Guition ESP32-P4 touchscreen",
   "usb_flashing_image": "usb-plug.png",
   "usb_flashing_image_alt": "USB-C cable plugged into the bottom USB-C flashing port on the Guition ESP32-P4 display",
   "web_installer_required_browsers": [
@@ -78,7 +78,7 @@
     "public YAML",
     "factory firmware",
     "release workflows",
-    "Espframe backups",
+    "EspFrame backups",
     "device web UI"
   ],
   "home_assistant_api_encryption_persistence": "Stored in device preferences and preserved across normal OTA updates",
@@ -371,7 +371,7 @@
   },
   "privacy_connection_model": "connects directly to your Immich server",
   "privacy_network_scope": "your own network",
-  "privacy_no_cloud_service": "no Espframe cloud service",
+  "privacy_no_cloud_service": "no EspFrame cloud service",
   "privacy_no_extra_account": "no extra account",
   "privacy_no_uploads": "does not upload photos",
   "privacy_no_hosted_service": "hosted service",
@@ -1149,6 +1149,11 @@
         "settings": [
           "screen_rotation"
         ]
+      },
+      "clock": {
+        "settings": [
+          "clock_format"
+        ]
       }
     },
     "docs/screen-tone.md": {
@@ -1277,7 +1282,6 @@
     "firmware_version_options",
     "firmware_versions_loaded",
     "firmware_versions_loading",
-    "firmware_metadata_loading",
     "c6_firmware_checking",
     "c6_firmware_installing",
     "tz_labels",
@@ -1500,6 +1504,7 @@
     "common/addon/time.yaml",
     "devices/guition-esp32-p4-jc8012p4a1/packages.yaml",
     "devices/guition-esp32-p4-jc8012p4a1-v2/packages.yaml",
+    "devices/guition-esp32-p4-jc8012p4a1-v3/packages.yaml",
     "docs/public/webserver/app.js",
     "docs/public/webserver/style.css"
   ],
@@ -1507,6 +1512,7 @@
     "components/espframe/configuration_contract_generated.h": "// ESPFRAME: generated from product/contract; run `npm run generate` to update.",
     "devices/guition-esp32-p4-jc8012p4a1/packages.yaml": "# ESPFRAME: generated from product/contract; run `npm run generate` to update.",
     "devices/guition-esp32-p4-jc8012p4a1-v2/packages.yaml": "# ESPFRAME: generated from product/contract; run `npm run generate` to update.",
+    "devices/guition-esp32-p4-jc8012p4a1-v3/packages.yaml": "# ESPFRAME: generated from product/contract; run `npm run generate` to update.",
     "docs/public/webserver/app.js": "// ESPFRAME: generated from typed docs/webserver/src and product/contract; run `npm run generate` to update.",
     "docs/public/webserver/style.css": "/* ESPFRAME: generated from docs/webserver/src/style.css; run `npm run generate` to update. */"
   },
@@ -1803,5 +1809,5 @@
   "esphome_docker_image": "ghcr.io/esphome/esphome",
   "esphome_config_mount": "/config",
   "esphome_docker_remove_container": true,
-  "esphome_version": "2026.8.2"
+  "esphome_version": "2026.9.1"
 }

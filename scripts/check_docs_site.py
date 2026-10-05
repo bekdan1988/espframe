@@ -16,14 +16,8 @@ DIST = ROOT / "docs/.vitepress/dist"
 BASE_URL = "https://jtenniswood.github.io/espframe/"
 BASE_PATH = "/espframe"
 NON_SEARCHABLE = {
-    "phase-1-product-metadata",
-    "phase-3-reset-architecture",
-    "phase-4-release-proven-architecture",
     "repository-governance",
-    "reset-architecture-v2",
     "source-ownership",
-    "tech-debt-cleanup-backlog",
-    "testing",
 }
 
 
@@ -88,7 +82,10 @@ class PageParser(html.parser.HTMLParser):
 
 
 def page_slug(path: Path) -> str:
-    return "" if path.name == "index.html" else path.stem
+    relative = path.relative_to(DIST).with_suffix("")
+    if relative.as_posix() == "index":
+        return ""
+    return relative.parent.as_posix() if relative.name == "index" else relative.as_posix()
 
 
 def route_for_page(path: Path) -> str:
@@ -101,7 +98,11 @@ def main() -> int:
         print(f"Docs build output not found: {DIST}", file=sys.stderr)
         return 1
 
-    pages = {page_slug(path): path for path in DIST.glob("*.html") if path.name != "404.html"}
+    pages = {
+        page_slug(path): path
+        for path in DIST.rglob("*.html")
+        if path.relative_to(DIST).as_posix() != "404.html"
+    }
     errors: list[str] = []
     titles: dict[str, str] = {}
     descriptions: dict[str, str] = {}
@@ -150,7 +151,7 @@ def main() -> int:
         errors.append("sitemap.xml: unexpected pages: " + ", ".join(sorted(sitemap_urls - expected_urls)))
 
     for slug, parser in parsed.items():
-        source = pages[slug].name
+        source = pages[slug].relative_to(DIST).as_posix()
         for href in parser.links:
             target = urlsplit(href)
             if target.scheme or target.netloc:

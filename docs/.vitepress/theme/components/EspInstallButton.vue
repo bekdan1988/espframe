@@ -7,22 +7,38 @@
       Failed to load installer. {{ loadError }}
     </div>
     <div v-else class="install-button">
-      <div class="device-picker" role="radiogroup" aria-label="Choose device model">
-        <label v-for="device in availableDevices" :key="device.id" class="device-option">
-          <input v-model="selectedDeviceId" type="radio" name="espframe-device" :value="device.id">
-          <span>
-            <strong>{{ device.label }}</strong>
-            <small>
-              {{ device.model }}
-              <template v-if="device.id === selectedDeviceId && manifestVersion">
-                - Latest {{ manifestVersion }}
-              </template>
-            </small>
-          </span>
-        </label>
-      </div>
-      <esp-web-install-button :manifest="manifestUrl">
-        <button slot="activate" class="brand-button">Install {{ selectedDevice.buttonLabel }}</button>
+      <section class="device-group" aria-labelledby="jc8012-heading">
+        <h3 id="jc8012-heading">10-inch JC8012P4A1</h3>
+        <p class="device-picker-help">
+          Check the chip revision first. If it is ESP32-P4 v3.x, choose V3. Otherwise, use the four-digit number on the rear case to choose V1 or V2.
+        </p>
+        <fieldset class="device-picker" aria-label="Choose JC8012P4A1 hardware version">
+          <legend>Hardware version</legend>
+          <div class="device-options">
+            <label
+              v-for="device in availableDevices"
+              :key="device.id"
+              class="device-option"
+              :class="{ 'device-option-selected': device.id === selectedDeviceId }"
+            >
+              <input v-model="selectedDeviceId" type="radio" name="espframe-device" :value="device.id">
+              <span class="device-option-content">
+                <span class="device-option-heading">
+                  <strong>{{ device.label }}</strong>
+                  <small v-if="device.id === selectedDeviceId && manifestVersion">Latest firmware {{ manifestVersion }}</small>
+                </span>
+                <span class="device-option-detail">{{ device.identification }}</span>
+                <span v-if="device.chipCheck" class="device-option-detail">
+                  Check in ESPHome startup logs, or connect the display's bottom USB-C port and run
+                  <code>{{ device.chipCheck }}</code> with <code>PORT</code> replaced by its serial port.
+                </span>
+              </span>
+            </label>
+          </div>
+        </fieldset>
+      </section>
+      <esp-web-install-button v-if="selectedDevice" :manifest="manifestUrl">
+        <button slot="activate" class="brand-button">Install {{ selectedDevice.label }}</button>
       </esp-web-install-button>
     </div>
   </div>
@@ -30,33 +46,40 @@
 
 <script setup>
 import { computed, ref, onMounted, watch } from 'vue'
+import { loadUsbInstaller } from '../usb-installer'
 
 const devices = [
   {
-    id: 'jc8012p4a1-original',
-    label: 'Original panel',
-    model: 'JC8012P4A1 — rear case 2627 or lower',
-    buttonLabel: 'Espframe for original panel',
+    id: 'immich-frame',
+    label: 'V1 — Original panel',
+    identification: 'Choose this if the ESP32-P4 chip is not v3.x and the four-digit number on the rear case is 2627 or lower. The case may not say “V1.”',
     manifest: './firmware/manifest.json',
   },
   {
-    id: 'jc8012p4a1-new',
-    label: 'New panel',
-    model: 'JC8012P4A1 — rear case 2628 or higher',
-    buttonLabel: 'Espframe for new panel',
+    id: 'immich-frame-v2',
+    label: 'V2 — New panel',
+    identification: 'Choose this if the ESP32-P4 chip is not v3.x and the four-digit number on the rear case is 2628 or higher. The case may not say “V2.”',
     manifest: './firmware/jc8012p4a1-v2/manifest.json',
+    requirePublishedManifest: true,
+  },
+  {
+    id: 'immich-frame-v3',
+    label: 'V3 — Production silicon',
+    identification: 'Choose this when the chip revision is ESP32-P4 v3.x. This chip check takes priority over the rear-case number.',
+    chipCheck: 'esptool --chip esp32p4 --port PORT chip_id',
+    manifest: './firmware/jc8012p4a1-v3/manifest.json',
     requirePublishedManifest: true,
   },
 ]
 
-const selectedDeviceId = ref(devices[0].id)
+const selectedDeviceId = ref('')
 const availableDeviceIds = ref(new Set(devices.filter((device) => !device.requirePublishedManifest).map((device) => device.id)))
 const supported = ref(false)
 const loadError = ref(null)
 const manifestVersion = ref('')
 const availableDevices = computed(() => devices.filter((device) => availableDeviceIds.value.has(device.id)))
-const selectedDevice = computed(() => devices.find((device) => device.id === selectedDeviceId.value) || devices[0])
-const manifestUrl = computed(() => selectedDevice.value.manifest)
+const selectedDevice = computed(() => availableDevices.value.find((device) => device.id === selectedDeviceId.value) || null)
+const manifestUrl = computed(() => selectedDevice.value?.manifest || '')
 
 async function loadManifestVersion() {
   manifestVersion.value = ''
@@ -85,10 +108,10 @@ async function discoverPublishedDevices() {
 
 onMounted(async () => {
   supported.value = 'serial' in navigator
-  await Promise.all([loadManifestVersion(), discoverPublishedDevices()])
+  await discoverPublishedDevices()
   if (!supported.value) return
   try {
-    await import('https://unpkg.com/esp-web-tools@10.2.1/dist/web/install-button.js')
+    await loadUsbInstaller()
   } catch (err) {
     loadError.value = err?.message || 'Network or script load error.'
   }
@@ -109,42 +132,114 @@ watch(manifestUrl, loadManifestVersion)
   align-items: flex-start;
 }
 
-.device-picker {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 10px;
+.device-group {
   width: 100%;
-  max-width: 620px;
+}
+
+.device-group h3 {
+  margin: 0 0 10px;
+}
+
+.device-picker-help {
+  max-width: 800px;
+  margin: 0 0 12px;
+  color: var(--vp-c-text-2);
+}
+
+.device-picker {
+  display: block;
+  min-width: 0;
+  max-width: 980px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.device-picker legend {
+  margin-bottom: 8px;
+  padding: 0;
+  font-weight: 600;
+}
+
+.device-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 12px;
 }
 
 .device-option {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 10px;
-  align-items: center;
-  padding: 12px 14px;
+  gap: 12px;
+  align-items: start;
+  min-height: 132px;
+  padding: 16px;
   border: 1px solid var(--vp-c-divider);
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
+  transition: border-color 0.2s, background-color 0.2s;
 }
 
-.device-option:has(input:checked) {
+.device-option:hover {
+  border-color: var(--vp-c-brand-1);
+}
+
+.device-option-selected {
   border-color: var(--vp-c-brand-1);
   background: var(--vp-c-brand-soft);
 }
 
+.device-option:has(input:focus-visible) {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: 2px;
+}
+
 .device-option input {
-  margin: 0;
+  margin: 4px 0 0;
 }
 
-.device-option strong,
-.device-option small {
-  display: block;
-  line-height: 1.3;
+.device-option-content,
+.device-option-heading {
+  display: grid;
+  gap: 8px;
 }
 
-.device-option small {
+.device-option-heading {
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  gap: 10px;
+}
+
+.device-option-heading small {
   color: var(--vp-c-text-2);
+  text-align: right;
+}
+
+.device-option-detail {
+  display: block;
+  color: var(--vp-c-text-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.device-option-detail code {
+  display: inline-block;
+  margin: 4px 0;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--vp-c-bg-soft);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .device-option-heading {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .device-option-heading small {
+    text-align: left;
+  }
 }
 
 .brand-button {

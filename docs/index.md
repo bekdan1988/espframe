@@ -1,18 +1,18 @@
 ---
-title: Espframe for Immich – ESP32 Digital Photo Frame
+title: EspFrame for Immich – ESP32 Digital Photo Frame
 titleTemplate: :title
 description: Build a standalone Immich digital photo frame on a Guition ESP32-P4 touchscreen with ESPHome. No hub, cloud, or extra software required.
 ---
 
-# Espframe for Immich
+# EspFrame for Immich
 
-**Espframe** is a standalone Immich digital photo frame for a supported Guition ESP32-P4 touchscreen. It turns an ESP32 photo frame into a private, self-hosted photo frame that displays your [Immich](https://immich.app/) library directly from your own server.
+**EspFrame** is a standalone Immich digital photo frame for a supported Guition ESP32-P4 touchscreen. It turns an ESP32 photo frame into a private, self-hosted photo frame that displays your [Immich](https://immich.app/) library directly from your own server.
 
 The firmware runs on ESP32-P4 hardware with [ESPHome](https://esphome.io/) and connects to Immich over HTTP or HTTPS. It does not need Home Assistant, a cloud account, or a separate bridge service.
 
-New to Espframe? Start with the [Immich photo frame guide](/immich-photo-frame), browse the [frequently asked questions](/faq), or go straight to [installation](/install).
+Ready to get started? **[Install EspFrame](/install)**. Need a display first? [Where to Buy](/screens).
 
-<img src="/espframe.png" alt="Espframe displaying Immich photos on a Guition ESP32-P4 touchscreen" style="max-width: 100%; border-radius: 8px; margin: 1.5rem 0;" />
+<img src="/espframe.png" alt="EspFrame displaying Immich photos on a Guition ESP32-P4 touchscreen" style="max-width: 100%; border-radius: 8px; margin: 1.5rem 0;" />
 
 ## Features
 
@@ -28,7 +28,9 @@ New to Espframe? Start with the [Immich photo frame guide](/immich-photo-frame),
 
 | Model | Panel | Stand |
 |-------|-------|-------|
-| Guition ESP32-P4 10" `JC8012P4A1`, original (`2627` or lower) and new (`2628` or higher) panels | [AliExpress](https://s.click.aliexpress.com/e/_c4LLo3rH) | [MakerWorld](https://makerworld.com/en/models/2490049-guition-p4-10inch-screen-stand#profileId-2736046) |
+| Guition ESP32-P4 10.1-inch `JC8012P4A1` | [AliExpress](https://s.click.aliexpress.com/e/_c4LLo3rH) | [MakerWorld](https://makerworld.com/en/models/2490049-guition-p4-10inch-screen-stand#profileId-2736046) |
+
+The [installer](/install) helps you choose the right firmware for your display.
 
 ## Support This Project
 

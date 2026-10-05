@@ -4,7 +4,7 @@ import { addDiscoveryMetadata, includeInSitemap } from './discovery'
 const hostname = 'https://jtenniswood.github.io/espframe/'
 
 export default defineConfig({
-  title: 'Espframe for Immich',
+  title: 'EspFrame for Immich',
   description: 'Standalone Immich-powered digital photo frame on ESP32-P4',
   base: '/espframe/',
   lang: 'en-US',
@@ -22,12 +22,12 @@ export default defineConfig({
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/espframe/favicon.svg' }],
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:locale', content: 'en_US' }],
-    ['meta', { property: 'og:site_name', content: 'Espframe for Immich' }],
+    ['meta', { property: 'og:site_name', content: 'EspFrame for Immich' }],
     ['meta', { property: 'og:image', content: `${hostname}espframe.png` }],
-    ['meta', { property: 'og:image:alt', content: 'Espframe displaying Immich photos on a Guition ESP32-P4 touchscreen' }],
+    ['meta', { property: 'og:image:alt', content: 'EspFrame displaying Immich photos on a Guition ESP32-P4 touchscreen' }],
     ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
     ['meta', { name: 'twitter:image', content: `${hostname}espframe.png` }],
-    ['meta', { name: 'twitter:image:alt', content: 'Espframe displaying Immich photos on a Guition ESP32-P4 touchscreen' }],
+    ['meta', { name: 'twitter:image:alt', content: 'EspFrame displaying Immich photos on a Guition ESP32-P4 touchscreen' }],
     ['script', { type: 'application/ld+json' }, JSON.stringify({
       '@context': 'https://schema.org',
       '@graph': [
@@ -35,14 +35,14 @@ export default defineConfig({
           '@type': 'WebSite',
           '@id': `${hostname}#website`,
           url: hostname,
-          name: 'Espframe for Immich',
+          name: 'EspFrame for Immich',
           description: 'Standalone Immich-powered digital photo frame on ESP32-P4. No hub, cloud, or extra software required.',
           inLanguage: 'en-US',
         },
         {
           '@type': 'SoftwareApplication',
           '@id': `${hostname}#software`,
-          name: 'Espframe for Immich',
+          name: 'EspFrame for Immich',
           applicationCategory: 'MultimediaApplication',
           operatingSystem: 'ESP32',
           description: 'Standalone Immich-powered digital photo frame on ESP32-P4. Displays your Immich photo library on supported Guition touchscreens over HTTP.',
@@ -84,7 +84,7 @@ export default defineConfig({
         {
           '@type': 'ListItem',
           position: 1,
-          name: 'Espframe for Immich',
+          name: 'EspFrame for Immich',
           item: hostname,
         },
       ]
@@ -122,7 +122,7 @@ export default defineConfig({
       if (isHowTo) {
         articleSchema.step = [
           { '@type': 'HowToStep', name: 'Connect the display with a USB-C data cable' },
-          { '@type': 'HowToStep', name: 'Flash Espframe from Chrome or Edge with the web installer' },
+          { '@type': 'HowToStep', name: 'Flash EspFrame from Chrome or Edge with the web installer' },
           { '@type': 'HowToStep', name: 'Connect the frame to WiFi' },
           { '@type': 'HowToStep', name: 'Enter the Immich server URL and API key' },
           { '@type': 'HowToStep', name: 'Choose a photo source for the slideshow' },
@@ -138,18 +138,23 @@ export default defineConfig({
     nav: [
       { text: 'Install', link: '/install' },
       { text: 'FAQ', link: '/faq' },
-      { text: 'Docs', link: '/' },
       { text: 'GitHub', link: 'https://github.com/jtenniswood/espframe' },
     ],
 
     sidebar: [
       {
-        text: 'Guide',
+        text: 'Getting Started',
         items: [
           { text: 'Overview', link: '/' },
-          { text: 'FAQ', link: '/faq' },
           { text: 'Immich Photo Frame', link: '/immich-photo-frame' },
+          { text: 'Where to Buy', link: '/screens' },
           { text: 'Install', link: '/install' },
+          { text: 'FAQ', link: '/faq' },
+        ],
+      },
+      {
+        text: 'Guides',
+        items: [
           { text: 'USB Flashing Help', link: '/usb-flashing' },
           { text: 'Immich API Key', link: '/api-key' },
           { text: 'Troubleshooting', link: '/troubleshooting' },
@@ -171,24 +176,20 @@ export default defineConfig({
         items: [
           { text: 'Home Assistant', link: '/home-assistant' },
           { text: 'Manual Setup', link: '/manual-setup' },
-          { text: 'Testing', link: '/testing' },
+        ],
+      },
+      {
+        text: 'Community',
+        items: [
+          { text: 'Partnerships', link: '/partnerships' },
+          { text: 'Contributing', link: '/contributing' },
+          { text: 'Collect USB Logs', link: '/collect-usb-logs' },
         ],
       },
       {
         text: 'Project',
         items: [
-          { text: 'Roadmap', link: '/roadmap' },
           { text: 'License', link: '/license' },
-        ],
-      },
-      {
-        text: 'Engineering Notes',
-        collapsed: true,
-        items: [
-          { text: 'Current Architecture', link: '/reset-architecture-v2' },
-          { text: 'Product Metadata Foundation', link: '/phase-1-product-metadata' },
-          { text: 'Reset Architecture', link: '/phase-3-reset-architecture' },
-          { text: 'Release-Proven Architecture', link: '/phase-4-release-proven-architecture' },
         ],
       },
     ],

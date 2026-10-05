@@ -1,62 +1,58 @@
 ---
-title: Install Espframe on a Guition ESP32-P4 Display
-description: Flash Espframe for Immich firmware to a supported Guition ESP32-P4 touchscreen directly from Chrome or Edge using Web Serial.
+title: Install EspFrame
+description: Choose the right firmware for your Guition display, install it from your browser, and connect EspFrame to WiFi and Immich.
 ---
 
-# Install Espframe on a Guition ESP32-P4 Display
+<span id="install-espframe-on-a-guition-esp32-p4-display"></span>
 
-Flash Espframe to a supported Guition ESP32-P4 display from your browser — no desktop toolchain or ESPHome required.
+# Install EspFrame
 
-## What You'll Need
+<span id="supported-display"></span>
 
-- **Supported Guition ESP32-P4 display**, **USB-C data cable** (not a charge-only cable), **Immich server** on your network ([immich.app](https://immich.app/)), and an [**Immich API key**](./api-key)
+## Before You Start {#what-you-ll-need}
 
-| Model | Panel | Stand |
-|-------|-------|-------|
-| Guition ESP32-P4 10" `JC8012P4A1`, original and new panel revisions | [AliExpress](https://s.click.aliexpress.com/e/_c4LLo3rH) | [MakerWorld](https://makerworld.com/en/models/2490049-guition-p4-10inch-screen-stand#profileId-2736046) |
+You need a **Guition JC8012P4A1** display, a **USB-C data cable** (not a charge-only cable), and **Chrome or Edge on a desktop computer**. Have your Immich server URL and [API key](/api-key) ready.
 
-## Choose the Correct Panel Firmware
+Need a display? [Buy the panel](https://s.click.aliexpress.com/e/_c4LLo3rH) or [print a stand](https://makerworld.com/en/models/2490049-guition-p4-10inch-screen-stand#profileId-2736046).
 
-The two screen revisions look almost identical, and the newer one may not say `V2`. Check the small four-digit number printed on the rear case:
+<span id="connect-the-display"></span>
+<span id="flash-the-firmware"></span>
+<span id="web-installer"></span>
 
-- **`2627` or lower:** choose **Original panel**.
-- **`2628` or higher:** choose **New panel**.
+## 1. Install the Firmware {#steps}
 
-Both revisions have the same `JC8012P4A1` model name and 1280×800 layout, but they require different display startup settings. If the wrong firmware is installed, the picture may be distorted; return here and install the other profile.
-
-## Connect the Display
-
-The device has two USB-C ports. Plug the cable into the **bottom port** (labeled **USB** on the PCB) — the one closest to the edge, next to the USB-A connector. The upper port is for the screen ribbon cable only.
+Plug the cable into the **bottom USB-C port**, next to the USB-A connector. The upper port is for the screen ribbon cable.
 
 <img src="/usb-plug.png" alt="USB-C cable plugged into the bottom USB-C flashing port on the Guition ESP32-P4 display" style="max-width: 100%; border-radius: 8px; margin: 1rem 0;" />
 
-::: tip Wrong port?
-If flashing fails, make sure you're using the **bottom** USB-C port as shown above. The upper port will not work for flashing.
-:::
+### Choose the Correct Panel Firmware
 
-## Web Installer
+Use the table to choose **Hardware version** below, then click **Install**, select the display's serial port, and confirm. Keep it connected until installation finishes.
 
-Connect the display via USB-C, select the profile matching the rear-case number, then click install.
+| What your display reports | Choose |
+| --- | --- |
+| ESP32-P4 chip revision **v3.x**, whatever the case marking | **V3** |
+| Chip is not v3.x; rear-case number **2627 or lower** | **V1** |
+| Chip is not v3.x; rear-case number **2628 or higher** | **V2** |
+
+Unsure about the chip revision or case number? [Check your display](/screens/jc8012p4a1#identify-your-revision) before installing. If your matching option is missing, its browser firmware is not available yet.
+
+**V3:** Initial USB installation and OTA updates have not yet been tested on physical V3 hardware.
 
 <EspInstallButton />
 
-::: info Browser
-Requires **Chrome** or **Edge** on a desktop computer with [Web Serial](https://developer.mozilla.org/en-US/docs/Web/API/Web_Serial_API). Safari and Firefox not supported.
+::: info Browser and USB help
+The installer uses Web Serial; Safari and Firefox cannot flash the display. Having trouble? See [USB flashing help](/usb-flashing).
 :::
 
-## Steps
+## 2. Connect to WiFi
 
-1. **Connect** — Plug in with USB-C; allow drivers if prompted.
-2. **Flash** — Click **Install Espframe for Immich**, choose the device’s serial port, confirm. Takes a few minutes.
-3. **WiFi** — Enter network name and password when prompted. If no prompt appears, open the WiFi settings on your phone or laptop and look for the frame’s WiFi hotspot: a network starting with **ESP_**, such as **ESP_7A1EED**. The letters and numbers after **ESP_** come from the frame’s MAC address (its network identifier), so your frame’s name will be different. Connect to that network, then follow the setup page (captive portal) to enter your home WiFi details. If the page does not open automatically, visit `http://192.168.4.1`.
-4. **Immich** — Open the device IP in a browser (shown on screen), enter **Immich Server URL** and **API Key**. The URL can be an IP address such as `http://192.168.1.30:2283` or a domain such as `https://photos.example.com`. See [API Key](/api-key) for permissions. Photos start loading. Next: [Smart Photo Filters](/photo-sources) to choose what to display.
+Enter your WiFi name and password when prompted.
 
-The setup wizard defaults to **24 Hour** clock format, **Europe/London (GMT+0)** timezone, shows the clock by default, and uses **0.pool.ntp.org**, **1.pool.ntp.org**, and **2.pool.ntp.org** for time sync. Pick your timezone during setup so the clock and sunrise/sunset based brightness and night tone are calculated for your location. The on-screen clock refreshes every **60 seconds**.
+If no prompt appears, connect your phone or laptop to the frame's **espframe** WiFi hotspot and open `http://192.168.4.1`. This captive portal lets you enter your home WiFi details.
 
-Choose whether the on-screen clock uses a 24-hour or 12-hour format.
+## 3. Connect to Immich
 
-## Recent firmware notes
+Open the **IP address shown on the display** in your browser. Enter **Immich Server URL** and **API Key**, then follow the setup wizard.
 
-- **Multiple Album, Person, or Tag IDs:** Saving comma-separated UUID lists uses a POST body so long lists no longer hit **414 URI Too Long**. Album IDs, Person IDs, and Tag IDs are still limited to **255 characters** each; see [Photo Sources](/photo-sources#album-person-and-tag-id-limits).
-- **Photo date filters:** The web UI now supports fixed date ranges and rolling ranges such as the last 6 months or last 2 years. See [Photo Sources](/photo-sources#date-filtering).
-- **ESPHome 2026.8:** Current local builds use ESPHome `2026.8.2`; manual builds also include compatibility fixes for ESPHome 2026.3, 2026.4, and 2026.7 LVGL changes.
+Use your server's IP address (for example, `http://192.168.1.30:2283`) or domain (`https://photos.example.com`). Choose your timezone and preferred clock format during setup.

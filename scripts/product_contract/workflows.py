@@ -2222,7 +2222,7 @@ def check_device_workflow_contract(product: dict, errors: list[str]) -> None:
         "Verify firmware assets",
         [
             "python3 scripts/firmware_release.py verify-directory",
-            "--allow-missing-slugs immich-frame-v2",
+            "--allow-missing-slugs immich-frame-v2 immich-frame-v3",
         ],
         workflow_texts,
         errors,
@@ -2233,7 +2233,7 @@ def check_device_workflow_contract(product: dict, errors: list[str]) -> None:
         [
             "python3 scripts/firmware_release.py verify-pages",
             '--base-url "$PUBLIC_BASE_URL"',
-            "--allow-missing-slugs immich-frame-v2",
+            "--allow-missing-slugs immich-frame-v2 immich-frame-v3",
         ],
         workflow_texts,
         errors,
@@ -2295,7 +2295,7 @@ def check_device_workflow_contract(product: dict, errors: list[str]) -> None:
         )
         require_contains(
             docs_workflow,
-            "--allow-missing-slugs immich-frame-v2",
+            "--allow-missing-slugs immich-frame-v2 immich-frame-v3",
             ".github/workflows/docs.yml",
             errors,
         )
@@ -2357,7 +2357,6 @@ def check_esphome_version(product: dict, errors: list[str]) -> None:
 
     required_refs = [
         ROOT / "README.md",
-        ROOT / "docs" / "install.md",
         ROOT / "docs" / "manual-setup.md",
     ]
     for path in required_refs:

@@ -1,22 +1,15 @@
 ---
-title: ESPHome Manual Setup for Espframe
-description: Install Espframe firmware from the ESPHome dashboard when you want full control over YAML substitutions and local builds.
+title: ESPHome Manual Setup for EspFrame
+description: Install EspFrame firmware from the ESPHome dashboard when you want full control over YAML substitutions and local builds.
 ---
 
-# ESPHome Manual Setup for Espframe
+# ESPHome Manual Setup for EspFrame
 
 For advanced users: install via the ESPHome dashboard instead of the web installer to control substitutions and YAML.
 
 ## Create a configuration
 
-First choose the package matching the four-digit number printed on the rear case:
-
-| Rear-case marking | Panel profile | Package file |
-|---|---|---|
-| `2627` or lower | Original panel | `devices/guition-esp32-p4-jc8012p4a1/packages.yaml` |
-| `2628` or higher | New panel | `devices/guition-esp32-p4-jc8012p4a1-v2/packages.yaml` |
-
-The newer panel may not say `V2`; use the rear-case number rather than the visible model name. New YAML in the ESPHome dashboard for the original panel:
+[Identify your display](/install#choose-the-correct-panel-firmware), then create `esphome.yaml` in the ESPHome dashboard. Use this example for V1:
 
 ```yaml
 substitutions:
@@ -35,24 +28,14 @@ packages:
     refresh: 1s
 ```
 
-For the new panel, use the matching package instead:
+For your chosen hardware version, replace the `files` line as follows:
 
-```yaml
-substitutions:
-  name: "immich-frame"
-  friendly_name: "Espframe for Immich"
+| Hardware version | Package line |
+| --- | --- |
+| V2 | `files: [devices/guition-esp32-p4-jc8012p4a1-v2/packages.yaml]` |
+| V3 | `files: [devices/guition-esp32-p4-jc8012p4a1-v3/packages.yaml]` |
 
-wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
-
-packages:
-  espframe:
-    url: https://github.com/jtenniswood/espframe
-    files: [devices/guition-esp32-p4-jc8012p4a1-v2/packages.yaml]
-    ref: main
-    refresh: 1s
-```
+For V3, also use `name: "immich-frame-10inch-v3"` and `friendly_name: "Espframe 10inch V3"`.
 
 Add `secrets.yaml` with `wifi_ssid` and `wifi_password`, then:
 
@@ -75,7 +58,7 @@ api:
 Add a unique 32-byte base64 key as `api_encryption_key` in `secrets.yaml`; generate one with `openssl rand -base64 32`. Never reuse the Immich API key here. Changing this value later requires reconfiguring the ESPHome integration in Home Assistant.
 
 ::: info ESPHome version
-Current local builds use ESPHome `2026.8.2`. The shared configuration includes compatibility fixes for ESPHome 2026.3, 2026.4, and 2026.7 LVGL changes.
+Use ESPHome `2026.9.1` for local builds.
 :::
 
 ## Substitutions
@@ -105,7 +88,7 @@ Add `immich_api_key` to `secrets.yaml`. The URL can also be a direct local addre
 
 ## Custom NTP servers
 
-You can change NTP servers later in the Espframe web settings under **Clock**. To pre-fill them before flashing, add substitutions:
+You can change NTP servers later in the EspFrame web settings under **Clock**. To pre-fill them before flashing, add substitutions:
 
 ```yaml
 ntp_server_1: "172.20.32.1"

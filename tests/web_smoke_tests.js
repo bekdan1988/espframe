@@ -221,9 +221,7 @@ const scenarios = [
   { name: "firmware-c6-install", configured: true, width: 1280, height: 900 },
   { name: "firmware-rollback", configured: true, width: 1280, height: 900 },
   { name: "firmware-rollback-failure", configured: true, width: 1280, height: 900, firmwareUploadFails: true },
-  { name: "firmware-index-unavailable", configured: true, width: 1280, height: 900, firmwareIndexUnavailable: true, firmwareDeviceInstallFails: true },
-  { name: "firmware-index-replaces-stale-device", configured: true, width: 1280, height: 900, firmwareManifestUnavailable: true, firmwareIndexLatestVersion: "v1.0.2", firmwareDeviceLatestVersion: "v1.0.1", firmwareStaleDeviceMetadata: true },
-  { name: "firmware-manifest-sse-update", configured: true, width: 1280, height: 900, firmwareStaleSseUpdate: true },
+  { name: "firmware-index-unavailable", configured: true, width: 1280, height: 900, firmwareIndexUnavailable: true },
   { name: "firmware-newer-prerelease", configured: true, width: 1280, height: 900, installedFirmwareVersion: "v1.2.0-beta.1" },
   ...(product.devices[1]
     ? [{ name: "firmware-second-device-index", configured: true, width: 1280, height: 900, firmwareDeviceSlug: product.devices[1].slug }]
@@ -233,9 +231,45 @@ const scenarios = [
   { name: "screen-tone-schedule", configured: true, width: 1280, height: 900 },
   { name: "daily-settings-controls", configured: true, width: 1280, height: 900 },
   { name: "backup-import-success", configured: true, width: 1280, height: 900, importFixture: validBackupFixture },
+  {
+    name: "backup-import-new-screen",
+    configured: true,
+    width: 1280,
+    height: 900,
+    importFixture: {
+      version: 3,
+      connection: { immich_url: "https://new-screen.photos.example.com", api_key: "" },
+      screen: { brightness_day: 90 }
+    },
+    configurationUpdateDelayMs: 300
+  },
+  {
+    name: "backup-import-new-screen-missing-key",
+    configured: true,
+    width: 1280,
+    height: 900,
+    importFixture: {
+      version: 3,
+      connection: { immich_url: "https://new-screen.photos.example.com" },
+      screen: { brightness_day: 90 }
+    },
+    configurationUpdateDelayMs: 300
+  },
   { name: "backup-import-v2-exclusions", configured: true, width: 1280, height: 900, importFixture: v2ExclusionBackupFixture },
-  { name: "backup-import-save-failure", configured: true, width: 1280, height: 900, importFixture: validBackupFixture, failedPostEndpoint: "Screen: Daytime Brightness" },
-  { name: "backup-import-partial", configured: true, width: 1280, height: 900, importFixture: partialBackupFixture },
+  {
+    name: "backup-import-save-failure",
+    configured: true,
+    width: 1280,
+    height: 900,
+    importFixture: {
+      version: 3,
+      connection: { immich_url: "https://failed-save.photos.example.com", api_key: "imported-api-key" },
+      screen: { brightness_day: 90 }
+    },
+    failedPostEndpoint: "Screen: Daytime Brightness",
+    configurationUpdateDelayMs: 300
+  },
+  { name: "backup-import-partial", configured: true, width: 1280, height: 900, importFixture: partialBackupFixture, configurationUpdateDelayMs: 300 },
   { name: "backup-import-rejected", configured: true, width: 1280, height: 900, importFixture: rejectedBackupFixture },
   { name: "backup-import-missing-version", configured: true, width: 1280, height: 900, importFixture: missingVersionBackupFixture },
   { name: "backup-import-future-version", configured: true, width: 1280, height: 900, importFixture: futureVersionBackupFixture },
@@ -257,10 +291,6 @@ function browserScriptForScenario(scenario) {
       importFixture: ${JSON.stringify(scenario.importFixture || null)},
       failedPostEndpoint: ${JSON.stringify(scenario.failedPostEndpoint || "")},
       firmwareIndexUnavailable: ${JSON.stringify(!!scenario.firmwareIndexUnavailable)},
-      firmwareManifestUnavailable: ${JSON.stringify(!!scenario.firmwareManifestUnavailable)},
-      firmwareDeviceInstallFails: ${JSON.stringify(!!scenario.firmwareDeviceInstallFails)},
-      firmwareStaleSseUpdate: ${JSON.stringify(!!scenario.firmwareStaleSseUpdate)},
-      firmwareStaleDeviceMetadata: ${JSON.stringify(!!scenario.firmwareStaleDeviceMetadata)},
       firmwareUploadFails: ${JSON.stringify(!!scenario.firmwareUploadFails)}
     };
     window.addEventListener("error", function (event) {
@@ -320,22 +350,6 @@ function browserScriptForScenario(scenario) {
           this.dispatch("state", { id: "text_sensor/ESP32-C6: Current Firmware", value: "2.0.0" });
           this.dispatch("state", { id: "text_sensor/ESP32-C6: Available Firmware", value: "2.0.1" });
           this.dispatch("state", { id: "text_sensor/ESP32-C6: Update Available", value: "Update available" });
-          if (${JSON.stringify(!!scenario.firmwareStaleSseUpdate)}) {
-            setTimeout(() => this.dispatch("state", {
-              id: "update/Firmware: Update",
-              current_version: ${JSON.stringify(installedFirmwareVersion)},
-              latest_version: "",
-              state: ""
-            }), 100);
-          }
-          if (${JSON.stringify(!!scenario.firmwareStaleDeviceMetadata)}) {
-            setTimeout(() => this.dispatch("state", {
-              id: "update/Firmware: Update",
-              current_version: ${JSON.stringify(installedFirmwareVersion)},
-              latest_version: ${JSON.stringify(scenario.firmwareDeviceLatestVersion || "v1.0.1")},
-              state: "UPDATE AVAILABLE"
-            }), 150);
-          }
         }, 25);
       }
       addEventListener(type, listener) {
@@ -438,7 +452,6 @@ function browserScriptForScenario(scenario) {
       const values = {};
       Object.entries(configurationEndpointNameByKey).forEach(([key, name]) => {
         if (key === "api_key") return;
-        if (key === "firmware_device" || key === "firmware") return;
         if (Object.prototype.hasOwnProperty.call(endpointValues, name)) values[key] = endpointValues[name];
       });
       return values;
@@ -531,24 +544,10 @@ function browserScriptForScenario(scenario) {
             device: ${JSON.stringify(firmwareDeviceSlug)},
             versions: [
               { version: "not-a-version", ota: { path: "bad.ota.bin", md5: "bad" } },
-              { version: ${JSON.stringify(scenario.firmwareIndexLatestVersion || "v1.0.1")}, release_url: "https://github.com/jtenniswood/espframe/releases/tag/v1.0.1", ota: { path: ${JSON.stringify(firmwareDeviceSlug + ".ota.bin")}, md5: "11111111111111111111111111111111" } },
-              { version: "v1.0.1", release_url: "https://github.com/jtenniswood/espframe/releases/tag/v1.0.1", ota: { path: "versions/v1.0.1/${firmwareDeviceSlug}.ota.bin", md5: "44444444444444444444444444444444" } },
+              { version: "v1.0.1", release_url: "https://github.com/jtenniswood/espframe/releases/tag/v1.0.1", ota: { path: ${JSON.stringify(firmwareDeviceSlug + ".ota.bin")}, md5: "11111111111111111111111111111111" } },
               { version: "v1.0.0", release_url: "https://github.com/jtenniswood/espframe/releases/tag/v1.0.0", ota: { path: "versions/v1.0.0/${firmwareDeviceSlug}.ota.bin", md5: "22222222222222222222222222222222" } },
               { version: "v0.9.0", release_url: "https://github.com/jtenniswood/espframe/releases/tag/v0.9.0", ota: { path: "versions/v0.9.0/${firmwareDeviceSlug}.ota.bin", md5: "33333333333333333333333333333333" } }
             ]
-          })
-        });
-      }
-      if (decoded.indexOf("manifest.json") !== -1) {
-        if (window.__smoke.firmwareManifestUnavailable) {
-          return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
-        }
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () => Promise.resolve({
-            version: ${JSON.stringify(scenario.firmwareManifestVersion || "v1.0.1")},
-            builds: [{ ota: { path: ${JSON.stringify(firmwareDeviceSlug + ".ota.bin")}, md5: "11111111111111111111111111111111" } }]
           })
         });
       }
@@ -605,7 +604,7 @@ function browserScriptForScenario(scenario) {
               status: 422,
               json: () => Promise.resolve({ api_version: 1, status: "rejected", error: "smoke_failure", field: failedKey })
             });
-          }, 0));
+          }, ${Number(scenario.configurationUpdateDelayMs || 0)}));
         }
         window.__smoke.posts.push(decoded);
         window.__smoke.postRecords.push({ url: decoded, body });
@@ -620,7 +619,7 @@ function browserScriptForScenario(scenario) {
             status: 200,
             json: () => Promise.resolve({ api_version: 1, status: "accepted", updated: Object.keys(update.values || {}).length })
           });
-        }, 0));
+        }, ${Number(scenario.configurationUpdateDelayMs || 0)}));
       }
       if (method === "POST") {
         window.__smoke.posts.push(decoded);
@@ -631,13 +630,10 @@ function browserScriptForScenario(scenario) {
         updateEndpointValueFromPost(decoded, body);
       }
       if (decoded.indexOf("Firmware: Update") !== -1) {
-        if (method === "POST" && decoded.indexOf("/install") !== -1 && window.__smoke.firmwareDeviceInstallFails) {
-          return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
-        }
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: () => Promise.resolve({ value: ${JSON.stringify(scenario.firmwareDeviceLatestVersion || "v1.0.1")}, state: "UPDATE AVAILABLE", current_version: ${JSON.stringify(installedFirmwareVersion)}, latest_version: ${JSON.stringify(scenario.firmwareDeviceLatestVersion || "v1.0.1")} })
+          json: () => Promise.resolve({ value: "v1.0.1", state: "UPDATE AVAILABLE", current_version: ${JSON.stringify(installedFirmwareVersion)}, latest_version: "v1.0.1" })
         });
       }
       if (decoded === "/espframe/api/v1/capabilities") {
@@ -671,10 +667,6 @@ function browserScriptForScenario(scenario) {
 }
 
 function smokeAssertionsForScenario(scenario) {
-  const expectedLatestFirmwareVersion = scenario.firmwareManifestVersion || scenario.firmwareIndexLatestVersion || "v1.0.1";
-  const expectedPreviousFirmwareVersions = scenario.installedFirmwareVersion === "dev"
-    ? ["v1.0.1", "v1.0.0", "v0.9.0"]
-    : expectedLatestFirmwareVersion === "v1.0.2" ? ["v1.0.1", "v0.9.0"] : ["v0.9.0"];
   const expectedFirmwareVersionsPath = scenario.firmwareDeviceSlug
     ? String(product.devices.find((device) => device.slug === scenario.firmwareDeviceSlug).public_manifest)
         .replace(/[^/]+$/, "versions.json")
@@ -921,7 +913,7 @@ function smokeAssertionsForScenario(scenario) {
       }
       async function requireFirmwarePanels() {
         const card = expandCard("Firmware");
-        await waitFor(() => card.textContent.indexOf(${JSON.stringify(expectedLatestFirmwareVersion)}) !== -1, 4000, "firmware version index");
+        await waitFor(() => card.textContent.indexOf("v1.0.1") !== -1, 4000, "firmware version index");
         ["Firmware updates", "Auto updates", "WiFi firmware", "Previous firmware"].forEach((title) => {
           const button = disclosureByTitle(title).querySelector(".inline-disclosure-button");
           if (button.tagName !== "BUTTON" || button.getAttribute("aria-expanded") !== "false") {
@@ -933,10 +925,10 @@ function smokeAssertionsForScenario(scenario) {
         if (updates.textContent.indexOf("Current version") === -1 || updates.textContent.toLowerCase().indexOf(${JSON.stringify((scenario.installedFirmwareVersion || "v1.0.0").toLowerCase())}) === -1) {
           throw new Error("Current firmware version is missing");
         }
-        if (updates.textContent.indexOf("Available version") === -1 || updates.textContent.indexOf(${JSON.stringify(expectedLatestFirmwareVersion)}) === -1) {
+        if (updates.textContent.indexOf("Available version") === -1 || updates.textContent.indexOf("v1.0.1") === -1) {
           throw new Error("Available firmware version is missing");
         }
-        if (!disclosureByTitle("Firmware updates").querySelector(".disclosure-badge.active")) {
+        if (!!disclosureByTitle("Firmware updates").querySelector(".disclosure-badge.active") !== ${JSON.stringify(scenario.installedFirmwareVersion !== "dev")}) {
           throw new Error("Main firmware update badge does not match the installed version");
         }
         if (!disclosureByTitle("Auto updates").querySelector(".disclosure-badge.active")) {
@@ -949,7 +941,7 @@ function smokeAssertionsForScenario(scenario) {
         if (!wifi.querySelector(".disclosure-badge.active")) throw new Error("WiFi update badge is not active");
         const previous = expandDisclosure("Previous firmware");
         const versions = Array.from(previous.querySelectorAll("option")).map((option) => option.value);
-        if (JSON.stringify(versions) !== JSON.stringify(${JSON.stringify(expectedPreviousFirmwareVersions)})) {
+        if (JSON.stringify(versions) !== JSON.stringify(${JSON.stringify(scenario.installedFirmwareVersion === "dev" ? ["v1.0.1", "v1.0.0", "v0.9.0"] : ["v0.9.0"])})) {
           throw new Error("Rollback choices are wrong: " + JSON.stringify(versions));
         }
       }
@@ -1709,29 +1701,15 @@ function smokeAssertionsForScenario(scenario) {
             await requireFirmwarePanels();
             const install = disclosureByTitle("Firmware updates").querySelector(".fw-actions button");
             if (${JSON.stringify(scenario.name)} === "firmware-main-install-from-development-build") {
-              if (install.textContent.trim() !== "Install Update") throw new Error("Development build should expose the public firmware install action");
+              if (install.textContent.trim() !== "Check for Update") throw new Error("Development build should require a device update check");
+              install.click();
+              await waitFor(() => install.textContent.trim() === "Install Update", 8000, "install action after development build update check");
             }
             install.click();
             install.click();
-            await waitFor(() => window.__smoke.posts.includes("/update"), 8000, "main firmware install");
+            await waitFor(() => window.__smoke.posts.some((url) => url.indexOf("Firmware: Update/install") !== -1), 8000, "main firmware install");
             const installPosts = window.__smoke.posts.filter((url) => url.indexOf("Firmware: Update/install") !== -1);
-            const uploadPosts = window.__smoke.posts.filter((url) => url === "/update");
-            if (installPosts.length !== 0 || uploadPosts.length !== 1 || !window.__smoke.posts.some((url) => url.indexOf("Firmware: Prepare Browser Update/press") !== -1)) {
-              throw new Error("Main firmware install did not use the advertised public asset: " + JSON.stringify(window.__smoke.posts));
-            }
-          }
-
-          if (${JSON.stringify(scenario.name)} === "firmware-index-replaces-stale-device") {
-            await requireFirmwarePanels();
-            const updates = expandDisclosure("Firmware updates");
-            if (updates.textContent.indexOf("v1.0.2") === -1 || updates.querySelector(".fw-actions button").textContent.trim() !== "Install Update") {
-              throw new Error("The version index did not replace stale device metadata");
-            }
-            updates.querySelector(".fw-actions button").click();
-            await waitFor(() => window.__smoke.posts.includes("/update"), 8000, "indexed firmware install");
-            if (window.__smoke.posts.some((url) => url.indexOf("Firmware: Update/install") !== -1)) {
-              throw new Error("Indexed firmware install used stale device metadata");
-            }
+            if (installPosts.length !== 1 || !install.disabled) throw new Error("Main firmware install was not protected against repeated actions");
           }
 
           if (${JSON.stringify(scenario.name)} === "firmware-c6-install") {
@@ -1775,21 +1753,8 @@ function smokeAssertionsForScenario(scenario) {
               throw new Error("Previous firmware panel should be hidden when the version index is unavailable");
             }
             const updates = expandDisclosure("Firmware updates");
-            const install = Array.from(updates.querySelectorAll("button")).find((button) => button.textContent.trim() === "Install Update");
-            if (!install) {
-              throw new Error("The stable manifest did not expose an install action without the version index");
-            }
-            install.click();
-            await waitFor(() => window.__smoke.posts.includes("/update"), 8000, "manifest OTA fallback upload");
-          }
-
-          if (${JSON.stringify(scenario.name)} === "firmware-manifest-sse-update") {
-            await requireFirmwarePanels();
-            await new Promise((resolve) => setTimeout(resolve, 250));
-            const updates = expandDisclosure("Firmware updates");
-            if (updates.textContent.indexOf("v1.0.1") === -1 ||
-                updates.querySelector(".fw-actions button").textContent.trim() !== "Install Update") {
-              throw new Error("A stale firmware SSE event replaced the public manifest update");
+            if (!Array.from(updates.querySelectorAll("button")).some((button) => button.textContent.trim() === "Check for Update")) {
+              throw new Error("Manual firmware check is unavailable without the public version index");
             }
           }
 
@@ -1909,6 +1874,9 @@ function smokeAssertionsForScenario(scenario) {
           if (${JSON.stringify(scenario.name)} === "backup-import-success") {
             clickButton("Import");
             await waitFor(() => pageText().indexOf("Settings imported successfully") !== -1, 8000, "successful import");
+            if (pageText().indexOf("The Immich API key isn’t stored in backups") !== -1) {
+              throw new Error("A backup with an API key should not ask the user to configure it again");
+            }
             if (!hasConfigurationPost("Connection: Server URL")) {
               throw new Error("Import did not post connection URL");
             }
@@ -1921,15 +1889,35 @@ function smokeAssertionsForScenario(scenario) {
             requirePostContains("Import normalized schedule setting", "Screen: Schedule Wake Timeout", "value=120");
           }
 
+          if (${JSON.stringify(scenario.name)}.startsWith("backup-import-new-screen")) {
+            clickButton("Import");
+            await waitFor(() => pageText().indexOf("Importing settings…") !== -1, 4000, "import progress feedback");
+            await new Promise(resolve => setTimeout(resolve, 10));
+            if (pageText().indexOf("Importing settings…") === -1) throw new Error("Import progress feedback disappeared while settings were being saved");
+            await waitFor(() => pageText().indexOf("Settings imported successfully. The Immich API key isn’t stored in backups; configure it on this screen.") !== -1, 8000, "new-screen import completion");
+            if (!hasConfigurationPost("Connection: Server URL")) throw new Error("New-screen import did not save the server URL");
+            requirePostContains("New-screen import brightness", "Screen: Daytime Brightness", "value=90");
+            if (window.__smoke.postRecords.some(record => record.body.indexOf("imported-api-key") !== -1)) {
+              throw new Error("Blank backup API key should not be written to the new screen");
+            }
+          }
+
           if (${JSON.stringify(scenario.name)} === "backup-import-save-failure") {
             clickButton("Import");
+            await waitFor(() => pageText().indexOf("Importing settings…") !== -1, 4000, "failed-save import progress");
+            await new Promise(resolve => setTimeout(resolve, 100));
+            if (pageText().indexOf("Importing settings…") === -1) throw new Error("Save failure replaced progress before the import finished");
             await waitFor(() => pageText().indexOf("Imported with 1 failed setting") !== -1, 8000, "failed import save");
             requirePostContains("Failed import still attempted daytime brightness", "Screen: Daytime Brightness", "value=90");
           }
 
           if (${JSON.stringify(scenario.name)} === "backup-import-partial") {
             clickButton("Import");
+            await waitFor(() => pageText().indexOf("Importing settings…") !== -1, 4000, "partial-import progress");
+            await new Promise(resolve => setTimeout(resolve, 100));
+            if (pageText().indexOf("Importing settings…") === -1) throw new Error("Skipped setting replaced progress before the import finished");
             await waitFor(() => pageText().indexOf("Imported with 1 skipped setting") !== -1, 8000, "partial import");
+            if (pageText().indexOf("Import skipped invalid album IDs") === -1) throw new Error("Skipped setting reason was not included in the import result");
             requirePostContains("Partial import text field", "Connection: Server URL");
             if (hasConfigurationPost("Photos: Album IDs")) {
               throw new Error("Skipped album IDs were posted to the device");

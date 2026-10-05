@@ -26,6 +26,7 @@ def check_touch_controls_metadata(product: dict, errors: list[str]) -> None:
     slideshow_yaml = read(ROOT / "devices" / "guition-esp32-p4-jc8012p4a1" / "device" / "screen_slideshow.yaml", errors)
     original_device_yaml = read(ROOT / "devices" / "guition-esp32-p4-jc8012p4a1" / "device" / "device.yaml", errors)
     v2_device_yaml = read(ROOT / "devices" / "guition-esp32-p4-jc8012p4a1-v2" / "device" / "device.yaml", errors)
+    v3_device_yaml = read(ROOT / "devices" / "guition-esp32-p4-jc8012p4a1-v3" / "device" / "device.yaml", errors)
     backlight_schedule_yaml = read(ROOT / "common" / "addon" / "backlight_schedule.yaml", errors)
     backlight_yaml = read(ROOT / "common" / "addon" / "backlight.yaml", errors)
 
@@ -52,6 +53,7 @@ def check_touch_controls_metadata(product: dict, errors: list[str]) -> None:
     for path, device_yaml in (
         ("devices/guition-esp32-p4-jc8012p4a1/device/device.yaml", original_device_yaml),
         ("devices/guition-esp32-p4-jc8012p4a1-v2/device/device.yaml", v2_device_yaml),
+        ("devices/guition-esp32-p4-jc8012p4a1-v3/device/device.yaml", v3_device_yaml),
     ):
         for needle in ("horizontal_distance >= 120", "immich_advance_forward", "immich_show_previous"):
             require_contains(device_yaml, needle, path, errors)
@@ -361,7 +363,7 @@ def check_clock_time_metadata(product: dict, errors: list[str]) -> None:
     if ntp_default_servers and static_ntp_defaults != ntp_default_servers:
         errors.append("project.ntp_default_servers must match the static web NTP defaults")
 
-    install_docs = read(ROOT / "docs" / "install.md", errors)
+    clock_docs = read(ROOT / "docs" / "screen-settings.md", errors)
     index_docs = read(ROOT / "docs" / "index.md", errors)
     backup_docs = read(ROOT / "docs" / "backup.md", errors)
     time_yaml = read(TIME_YAML, errors)
@@ -376,9 +378,9 @@ def check_clock_time_metadata(product: dict, errors: list[str]) -> None:
         "sunrise/sunset based brightness and night tone",
     ):
         if needle:
-            require_contains(install_docs, needle, "docs/install.md", errors)
+            require_contains(clock_docs, needle, "docs/screen-settings.md", errors)
     for server in ntp_default_servers:
-        require_contains(install_docs, server, "docs/install.md", errors)
+        require_contains(clock_docs, server, "docs/screen-settings.md", errors)
 
     for needle in ("Clock Overlay", "current time"):
         require_contains(index_docs, needle, "docs/index.md", errors)
