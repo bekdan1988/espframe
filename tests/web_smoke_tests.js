@@ -194,11 +194,17 @@ const scenarios = [
   { name: "frame-name", configured: true, width: 390, height: 900, identity: true },
   { name: "frame-name-restart-failure", configured: true, width: 1280, height: 900, identity: true, failedPostEndpoint: "Device: Reboot Screen" },
   { name: "frame-name-failure", configured: true, width: 1280, height: 900, identity: true, identityFailure: true },
+  { name: "frame-name-save-timeout", configured: true, width: 1280, height: 900, identity: true, identityPostHangs: true, identityPostHangAfter: 0 },
   ...[false, true].map(restoreName => ({
     name: "frame-name-import-" + (restoreName ? "restore" : "keep"),
     configured: true, width: 1280, height: 900, identity: true, restoreName,
-    importFixture: { version: 3, identity: { name: "Office" }, screen: { brightness_day: 80 } }
+    importFixture: { version: 3, identity: { ["name"]: "Office" }, screen: { brightness_day: 80 } }
   })),
+  {
+    name: "frame-name-import-timeout",
+    configured: true, width: 1280, height: 900, identity: true, restoreName: true, identityPostHangs: true,
+    importFixture: { version: 3, identity: { ["name"]: "Office" }, screen: { brightness_day: 80 } }
+  },
   { name: "refresh-startup", configured: true, width: 1280, height: 900, slowStartup: true },
   { name: "refresh-startup-legacy", configured: true, width: 1280, height: 900, slowStartup: true, legacyStartup: true },
   { name: "refresh-startup-legacy-snapshot", configured: true, width: 1280, height: 900, slowStartup: true, legacyConfigurationSnapshot: true },
@@ -231,6 +237,8 @@ const scenarios = [
   { name: "screen-tone-schedule", configured: true, width: 1280, height: 900 },
   { name: "daily-settings-controls", configured: true, width: 1280, height: 900 },
   { name: "backup-import-success", configured: true, width: 1280, height: 900, importFixture: validBackupFixture },
+  { name: "backup-import-key-guidance", configured: true, apiKeyConfigured: false, width: 1280, height: 900, importFixture: validBackupFixture },
+  { name: "backup-import-read-failure", configured: true, width: 1280, height: 900, importFixture: validBackupFixture, fileReadFailure: true },
   {
     name: "backup-import-new-screen",
     configured: true,
@@ -317,6 +325,10 @@ function browserScriptForScenario(scenario) {
       if (this.download) { window.__smoke.downloads += 1; window.__smoke.downloadName = this.download; }
     };
     FileReader.prototype.readAsText = function (file) {
+      if (${JSON.stringify(!!scenario.fileReadFailure)}) {
+        if (this.onerror) setTimeout(() => this.onerror(new Event("error")), 0);
+        return;
+      }
       Object.defineProperty(this, "result", { configurable: true, value: file && file.__smokeContent ? file.__smokeContent : "" });
       if (this.onload) setTimeout(() => this.onload({ target: this }), 0);
     };
@@ -366,9 +378,10 @@ function browserScriptForScenario(scenario) {
     window.EventSource = SmokeEventSource;
 
     const configured = ${JSON.stringify(scenario.configured)};
+    const apiKeyConfigured = ${JSON.stringify(scenario.apiKeyConfigured !== undefined ? scenario.apiKeyConfigured : scenario.configured)};
     const endpointValues = {
       "Connection: Server URL": configured ? "https://photos.example.com" : "",
-      "Connection: API Key": configured ? "fixture-api-key" : "",
+      "Connection: API Key": apiKeyConfigured ? "fixture-api-key" : "",
       "Firmware: Version": ${JSON.stringify(installedFirmwareVersion)},
       "Firmware: Device": ${JSON.stringify(firmwareDeviceSlug)},
       "Photos: Source": "All Photos",
@@ -509,6 +522,8 @@ function browserScriptForScenario(scenario) {
       identity = { ...identity, name, friendly_name: name, hostname: name.slice(0, 19).toLowerCase() + "-b2c3" };
     }
     let identityFailure = ${JSON.stringify(!!scenario.identityFailure)};
+    let identityPostCount = 0;
+    window.__smoke.identityGetAborted = false;
     window.fetch = function (url, options) {
       const method = options && options.method ? options.method : "GET";
       const decoded = decodeURIComponent(String(url));
@@ -516,13 +531,29 @@ function browserScriptForScenario(scenario) {
       const body = options && options.body != null ? String(options.body) : "";
       if (decoded === "/espframe/api/v1/identity") {
         if (method === "GET" && ${JSON.stringify(!!scenario.delayedIdentity)}) {
-          return new Promise(resolve => { window.__smoke.releaseIdentity = () => resolve(
-            ${JSON.stringify(!!scenario.identity)} ? { ok: true, json: () => Promise.resolve({ ...identity }) } : { ok: false, status: 404 }); });
+          return new Promise((resolve, reject) => {
+            window.__smoke.releaseIdentity = () => resolve(
+              ${JSON.stringify(!!scenario.identity)} ? { ok: true, json: () => Promise.resolve({ ...identity }) } : { ok: false, status: 404 });
+            if (options.signal) options.signal.addEventListener("abort", () => {
+              window.__smoke.identityGetAborted = true;
+              const error = new Error("request aborted");
+              error.name = "AbortError";
+              reject(error);
+            }, { once: true });
+          });
         }
         if (!${JSON.stringify(!!scenario.identity)}) return Promise.resolve({ ok: false, status: 404 });
         if (method === "POST") {
+          identityPostCount += 1;
           window.__smoke.posts.push(decoded);
           window.__smoke.postRecords.push({ url: decoded, body });
+          if (${JSON.stringify(!!scenario.identityPostHangs)} && identityPostCount === ${JSON.stringify((scenario.identityPostHangAfter === undefined ? 1 : scenario.identityPostHangAfter) + 1)}) {
+            return new Promise((resolve, reject) => options.signal.addEventListener("abort", () => {
+              const error = new Error("request aborted");
+              error.name = "AbortError";
+              reject(error);
+            }, { once: true }));
+          }
           if (identityFailure) {
             identityFailure = false;
             return Promise.resolve({ ok: false, status: 500 });
@@ -648,6 +679,13 @@ function browserScriptForScenario(scenario) {
           configuration_available: true, configuration_read: true, configuration_write: true,
           configuration_encoding: "application/x-www-form-urlencoded", configuration_parameter: "configuration",
           legacy_entity_api: true, backup_versions: [1, 2, 3], setting_count: 52
+        }) });
+      }
+      if (decoded.indexOf("/text/Connection: API Key") !== -1 && method === "GET") {
+        const key = String(endpointValues["Connection: API Key"] || "");
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
+          value: "", state: key ? "********" : "",
+          api_key_configured: !!key
         }) });
       }
       const endpointName = endpointNameForUrl(decoded);
@@ -800,6 +838,12 @@ function smokeAssertionsForScenario(scenario) {
         }
         if (exported.screen.schedule_wake_timeout !== 60) {
           throw new Error("Exported schedule wake timeout was not normalized");
+        }
+        if (Object.prototype.hasOwnProperty.call(exported.connection || {}, "api_key")) {
+          throw new Error("Exported backup must not contain an API key");
+        }
+        if (window.__smoke.fetchedUrls.some(url => url.indexOf("include_secret") !== -1)) {
+          throw new Error("Backup export must not request the API key from the device");
         }
       }
       function selectByLabel(labelText) {
@@ -1511,9 +1555,13 @@ function smokeAssertionsForScenario(scenario) {
           if (!buttonByText("Export").disabled) throw new Error("Export enabled before identity settled");
           buttonByText("Export").click();
           if (window.__smoke.exportPayloads.length) throw new Error("Export omitted pending identity");
+          await new Promise(resolve => setTimeout(resolve, 5200));
+          if (window.__smoke.identityGetAborted) throw new Error("Slow identity GET was aborted before the saved frame name loaded");
+          if (!buttonByText("Export").disabled) throw new Error("Export enabled before the slow identity GET completed");
           window.__smoke.releaseIdentity();
           await waitFor(() => !buttonByText("Export").disabled, 4000, "export after identity");
           clickButton("Export");
+          await waitFor(() => window.__smoke.exportPayloads.length === 1, 4000, "backup export");
           const backup = JSON.parse(window.__smoke.exportPayloads[0]);
           if (${JSON.stringify(!!scenario.identity)}) {
             if (backup.identity?.name !== "Office" || !window.__smoke.downloadName.startsWith("office-b2c3-config-")) throw new Error("Delayed identity omitted from backup");
@@ -1556,7 +1604,17 @@ function smokeAssertionsForScenario(scenario) {
             if (document.querySelector("#frame-name").value !== "Living Room") throw new Error("Failed save lost draft");
             clickButton("Save & Restart");
           }
-          await waitName("Living Room");
+          if (${JSON.stringify(scenario.name === "frame-name-save-timeout")}) {
+            await waitFor(() => document.querySelector('[role="alert"]')?.textContent, 7000, "save timeout guidance");
+            if (document.querySelector('[role="alert"]').textContent !== "Frame name could not be saved. Please retry.") throw new Error("Save timeout did not show retry guidance");
+            if (window.__smoke.posts.some(url => url.includes("Reboot Screen"))) throw new Error("Timed out save restarted the device");
+            if (document.title !== "Espframe · EspFrame") throw new Error("Timed out save changed the title");
+            if (document.querySelector("#frame-name").value !== "Living Room") throw new Error("Timed out save lost draft");
+            clickButton("Save & Restart");
+            await waitName("Living Room");
+          } else {
+            await waitName("Living Room");
+          }
           await waitFor(() => document.querySelector(".frame-reconnect-dialog[open]"), 4000, "reconnect dialog");
           const dialog = document.querySelector(".frame-reconnect-dialog");
           if (!dialog.textContent.includes("Frame name saved") || dialog.textContent.includes("Home Assistant")) throw new Error("Incorrect restart dialog copy");
@@ -1571,6 +1629,7 @@ function smokeAssertionsForScenario(scenario) {
           clickButton("Close");
           await waitFor(() => !document.querySelector(".frame-reconnect-dialog"), 4000, "closed reconnect dialog");
           clickButton("Export");
+          await waitFor(() => window.__smoke.exportPayloads.length === 1, 4000, "named backup export");
           const backup = JSON.parse(window.__smoke.exportPayloads[0]);
           if (backup.identity.name !== "Living Room" || !window.__smoke.downloadName.startsWith("living-room-b2c3-config-")) {
             throw new Error("Named backup is incorrect");
@@ -1582,11 +1641,16 @@ function smokeAssertionsForScenario(scenario) {
             if (checkbox.checked) throw new Error("Name restore must default to unchecked");
             checkbox.checked = ${JSON.stringify(!!scenario.restoreName)};
             clickButton("Import backup");
-            await waitFor(() => pageText().includes("Backup restored successfully"), 4000, "backup completion");
-            await waitName(${JSON.stringify(scenario.restoreName ? "Office" : "Living Room")});
+            await waitFor(() => pageText().indexOf("Backup restored successfully") !== -1 || pageText().indexOf("Backup partially restored:") !== -1, ${scenario.identityPostHangs ? 8000 : 4000}, "backup completion");
+            if (${JSON.stringify(!!scenario.identityPostHangs)}) {
+              if (pageText().indexOf("Backup partially restored: 1 failed setting") === -1) throw new Error("Timed out name restore did not report a failed setting");
+              if (document.title !== "Living Room · EspFrame") throw new Error("Timed out name restore changed the frame title");
+            } else {
+              await waitName(${JSON.stringify(scenario.restoreName ? "Office" : "Living Room")});
+            }
             const saves = window.__smoke.postRecords.filter(record => record.url === "/espframe/api/v1/identity");
             if (saves.length !== ${scenario.restoreName ? 2 : 1}) throw new Error("Unexpected name restore write");
-            if (${JSON.stringify(!!scenario.restoreName)} && !document.querySelector(".frame-name-info").textContent.includes("office-b2c3.local")) {
+            if (${JSON.stringify(!!scenario.restoreName && !scenario.identityPostHangs)} && !document.querySelector(".frame-name-info").textContent.includes("office-b2c3.local")) {
               throw new Error("Restore did not use destination MAC suffix");
             }
           } else {
@@ -1689,6 +1753,7 @@ function smokeAssertionsForScenario(scenario) {
               throw new Error("Grouped settings overflow the mobile viewport");
             }
             clickButton("Export");
+            await waitFor(() => window.__smoke.downloads === 1, 4000, "backup export");
             clickButton("Import");
             if (window.__smoke.downloads !== 1) throw new Error("Export did not trigger a download");
             requireExportShape();
@@ -1882,9 +1947,6 @@ function smokeAssertionsForScenario(scenario) {
           if (${JSON.stringify(scenario.name)} === "backup-import-success") {
             clickButton("Import");
             await waitFor(() => pageText().indexOf("Backup restored successfully") !== -1, 8000, "successful import");
-            if (pageText().indexOf("The Immich API key isn’t stored in backups") !== -1) {
-              throw new Error("A backup with an API key should not ask the user to configure it again");
-            }
             if (!hasConfigurationPost("Connection: Server URL")) {
               throw new Error("Import did not post connection URL");
             }
@@ -1892,12 +1954,8 @@ function smokeAssertionsForScenario(scenario) {
               .map(record => JSON.parse(new URLSearchParams(record.body).get("configuration") || "{}"))
               .filter(configuration => Object.keys(configuration.values || {}).length > 1);
             if (settingBatches.length < 2) throw new Error("Large backup settings should be sent in multiple small atomic batches");
-            const keyBatch = settingBatches.find(configuration => configuration.values.api_key === "imported-api-key");
-            if (!keyBatch || Object.keys(keyBatch.values).length < 2) {
-              throw new Error("Imported API key should share an atomic configuration update with other settings");
-            }
-            if (window.__smoke.postRecords.some(record => record.url === "/text/Connection%3A%20API%20Key/set")) {
-              throw new Error("Imported API key should not be saved through a separate legacy request");
+            if (window.__smoke.postRecords.some(record => record.body.indexOf("imported-api-key") !== -1)) {
+              throw new Error("Legacy backup API key should not be restored");
             }
             if (window.__smoke.postRecords.some(record => record.url === "/espframe/api/v1/configuration" && record.body.length > 900)) {
               throw new Error("Backup import exceeded the safe configuration request size");
@@ -1909,6 +1967,41 @@ function smokeAssertionsForScenario(scenario) {
             requirePostContains("Import aggregate NTP field", "Clock: NTP Server 1");
             requirePostContains("Import WiFi auto-update field", "WiFi Firmware: Auto Update", "turn_on");
             requirePostContains("Import normalized schedule setting", "Screen: Schedule Wake Timeout", "value=120");
+            if (window.__smoke.postRecords.some(record => record.body.indexOf("imported-api-key") !== -1)) {
+              throw new Error("Legacy backup API key should not replace the destination key");
+            }
+          }
+
+          if (${JSON.stringify(scenario.name)} === "backup-import-key-guidance") {
+            clickButton("Import");
+            await waitFor(() => pageText().indexOf("Backups don’t include the Immich API key.") !== -1, 8000, "missing API-key guidance");
+            if (!document.querySelector("#sp-immich.active")) throw new Error("Restore should switch to the Immich tab");
+            const field = document.querySelector(".api-key-restore-required");
+            const apiKeyInput = field && field.querySelector('input[placeholder="Paste your Immich API key"]');
+            if (!field || !apiKeyInput) {
+              throw new Error("Restore should highlight the API-key input");
+            }
+            const fieldStyle = getComputedStyle(field);
+            const labelStyle = getComputedStyle(field.querySelector("label"));
+            if (fieldStyle.borderTopStyle !== "none" || fieldStyle.backgroundColor !== "rgba(0, 0, 0, 0)") {
+              throw new Error("Restore highlight should not outline or fill the outer field container");
+            }
+            if (labelStyle.color === getComputedStyle(apiKeyInput).borderTopColor) {
+              throw new Error("Restore highlight should be limited to the API-key input");
+            }
+            const connection = field.closest(".card");
+            if (!connection || connection.querySelector(".card-toggle").getAttribute("aria-expanded") !== "true") {
+              throw new Error("Restore should expand the Connection panel");
+            }
+            if (window.__smoke.postRecords.some(record => record.body.indexOf("imported-api-key") !== -1)) {
+              throw new Error("Legacy backup API key should not be restored");
+            }
+          }
+
+          if (${JSON.stringify(scenario.name)} === "backup-import-read-failure") {
+            clickButton("Import");
+            await waitFor(() => pageText().indexOf("Could not read the selected backup file. Please try again.") !== -1, 4000, "backup read failure feedback");
+            if (window.__smoke.posts.length) throw new Error("Unreadable backup must not write settings to the device");
           }
 
           if (${JSON.stringify(scenario.name)}.startsWith("backup-import-new-screen")) {
@@ -1919,8 +2012,11 @@ function smokeAssertionsForScenario(scenario) {
             await waitFor(() => pageText().indexOf("Backup restored successfully.") !== -1, 8000, "new-screen import completion");
             if (!hasConfigurationPost("Connection: Server URL")) throw new Error("New-screen import did not save the server URL");
             requirePostContains("New-screen import brightness", "Screen: Daytime Brightness", "value=90");
+            const updates = configurationUpdates();
+            if (updates.length !== 1) throw new Error("Backup import should batch compatible settings into one configuration update");
+            if (Object.keys(updates[0]).length !== 2) throw new Error("Backup import batch should include all imported settings");
             if (window.__smoke.postRecords.some(record => record.body.indexOf("imported-api-key") !== -1)) {
-              throw new Error("Blank backup API key should not be written to the new screen");
+              throw new Error("Backup API key should not be written to the new screen");
             }
           }
 
@@ -1937,6 +2033,9 @@ function smokeAssertionsForScenario(scenario) {
               throw new Error("Import feedback should identify a setting rejected by the device");
             }
             requirePostContains("Failed import still attempted daytime brightness", "Screen: Daytime Brightness", "value=90");
+            if (window.__smoke.postRecords.some(record => record.body.indexOf("imported-api-key") !== -1)) {
+              throw new Error("Legacy backup API key should be ignored during restore");
+            }
           }
 
           if (${JSON.stringify(scenario.name)} === "backup-import-partial") {

@@ -336,6 +336,11 @@ h2 {
   margin-bottom:22px
 }
 
+.api-key-restore-required input {
+  border-color:var(--danger) !important;
+  box-shadow:0 0 0 2px rgba(241, 65, 88, .18)
+}
+
 .field:last-child {
   margin-bottom:0
 }

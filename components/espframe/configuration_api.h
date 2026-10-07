@@ -126,7 +126,9 @@ class ConfigurationApiHandler final : public AsyncWebHandler {
     root["state"] = configured ? "********" : "";
     root["api_key_configured"] = configured;
     const auto payload = builder.serialize();
-    request->send(200, "application/json", payload.c_str());
+    auto *response = request->beginResponse(200, "application/json", payload.c_str());
+    response->addHeader("Cache-Control", "no-store");
+    request->send(response);
   }
 
   void send_configuration_(AsyncWebServerRequest *request) const {
