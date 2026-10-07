@@ -15,9 +15,11 @@ Export your settings to a JSON file and import them back — useful for backups,
 
 The export captures all user-facing settings from the current session:
 
+Backups do not contain the Immich API key. Restoring a backup keeps the destination's existing key unchanged. When setting up a new frame, enter its API key on the Immich tab after restoring.
+
 | Category | Settings |
 |----------|----------|
-| **Connection** | Immich server URL, API key |
+| **Connection** | Immich server URL |
 | **Photos** | Smart-filter groups and matching, favorites, rating, location, inclusions and exclusions, dates, orientation, portrait pairing, and display mode |
 | **Frequency** | Slideshow interval, connection timeout |
 | **Firmware Updates** | Display auto update, update frequency, WiFi firmware auto update |
@@ -34,7 +36,7 @@ Firmware version, update status, sunrise/sunset, and current brightness are **no
 1. Open the device web UI at `http://<device-ip>/`.
 2. Expand the **Backup** card.
 3. Click **Import** and select a previously exported `.json` file.
-4. All valid settings in a backup are pushed in size-limited atomic updates so larger backups fit the device web server request limit. If the device rejects a setting, smaller batches let the other settings continue restoring. The page refreshes when complete.
+4. All valid settings in a backup are pushed in size-limited atomic updates so larger backups fit the device web server request limit. If the device rejects a setting, smaller batches let other settings continue restoring. The page refreshes when complete. Backups never include the Immich API key; older backup files that contain one do not replace the destination's key.
 
 Partial config files work — only settings present in the file are applied; everything else stays unchanged.
 
@@ -48,7 +50,7 @@ The export is a standard JSON file with a `version` field and grouped settings:
 {
   "version": 3,
   "exported_at": "2026-03-29T12:00:00.000Z",
-  "connection": { "immich_url": "...", "api_key": "..." },
+  "connection": { "immich_url": "..." },
   "photos": {
     "source": "Custom",
     "albums_enabled": false,

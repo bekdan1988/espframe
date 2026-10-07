@@ -2,7 +2,6 @@
 
   function backupExportFieldValue(entry) {
     if (!entry || !Array.isArray(entry.state_keys) || !entry.state_keys.length) return "";
-    if (entry.field === "api_key") return "";
     if (entry.group === "screen" && entry.field === "schedule_wake_timeout") {
       return normalizeScheduleWakeTimeout(S.schedule_wake_timeout);
     }
@@ -110,7 +109,7 @@
     return BACKUP_VERSION_MIGRATIONS[data.version](data);
   }
 
-  function exportConfig() {
+  function downloadBackup() {
     if (!frameIdentityLoaded) return;
     var data = buildBackupExportData();
     var json = JSON.stringify(data, null, 2);
@@ -129,6 +128,11 @@
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  }
+
+  function exportConfig() {
+    if (!frameIdentityLoaded) return;
+    downloadBackup();
   }
 
   function backupEntryKey(entry) {
@@ -375,13 +379,6 @@
         if (importUrl.length > 255) return skipBackupImportField("Immich URL exceeds 255 characters - not imported");
         if (importUrl && !isValidHttpUrl(importUrl)) return skipBackupImportField("Immich URL was invalid - not imported");
         return queueBackupImportSetting("immich_url", importUrl);
-      case "connection.api_key":
-        var importApiKey = value == null ? "" : String(value).trim();
-        // API keys are intentionally omitted from exports. A blank value means
-        // keep the destination frame's key unchanged.
-        if (!importApiKey) return true;
-        if (importApiKey.length > 255) return skipBackupImportField("API key exceeds 255 characters - not imported");
-        queueBackupImportSetting("api_key", importApiKey);
         return true;
       case "photos.album_ids":
         var importAlbum = String(value).trim();
@@ -507,6 +504,9 @@
             return;
           }
           data = migrateBackupConfig(data);
+          // Older backups included the Immich API key. Ignore it so restore
+          // never replaces the key configured on this device.
+          if (data.connection) delete data.connection.api_key;
 
           var restoreName = false;
           if (data.identity !== undefined) {
@@ -541,7 +541,6 @@
           if (Object.keys(backupImportValues).length) {
             trackBackupImportSave(saveBackupImportSettings(backupImportValues), Object.keys(backupImportValues).length);
           }
-
           if (restoreName) {
             queuedCount += 1;
             trackBackupImportSave(saveFrameName(data.identity.name).then(function () { return { ok: true }; }));
@@ -568,22 +567,20 @@
               var failedCount = summary.failedCount;
               var appliedCount = summary.appliedCount;
               backupImportInProgress = false;
-              var apiKeyWasOmitted = !data.connection || !Object.prototype.hasOwnProperty.call(data.connection, "api_key") ||
-                !String(data.connection.api_key == null ? "" : data.connection.api_key).trim();
               var resultMessage = backupImportSummaryMessage(appliedCount, skippedCount, failedCount);
               if (backupImportMessages.length) resultMessage += ". " + backupImportMessages.join("; ");
-              if (apiKeyWasOmitted && !failedCount && !skippedCount) {
-                resultMessage = S.api_key_configured
-                  ? "Backup restored successfully. Your existing Immich API key was kept."
-                  : "Backup restored successfully. Add your Immich API key on this screen to reconnect to Immich.";
-              } else if (apiKeyWasOmitted) {
-                resultMessage += ". The Immich API key was left unchanged because backups don’t include it.";
-              }
+              var apiKeyNeedsInput = !S.api_key_configured;
+              resultMessage += apiKeyNeedsInput
+                ? ". Backups don’t include the Immich API key. Enter it in the highlighted field on the Immich tab."
+                : ". The destination’s existing Immich API key was left unchanged.";
+              highlightApiKeyAfterRestore = apiKeyNeedsInput;
               showBanner(
                 resultMessage,
-                failedCount ? "error" : "success"
+                failedCount || skippedCount ? "error" : "success",
+                apiKeyNeedsInput ? 0 : undefined
               );
               renderSettings();
+              if (apiKeyNeedsInput) openImmichConnectionForApiKey();
               backupImportSaveTasks = null;
               backupImportValues = null;
               backupImportMessages = [];
@@ -610,5 +607,12 @@
     });
 
     document.body.appendChild(fileInput);
+    window.addEventListener("focus", function () {
+      setTimeout(function () {
+        if ((!fileInput.files || !fileInput.files.length) && fileInput.parentNode) {
+          fileInput.parentNode.removeChild(fileInput);
+        }
+      }, 1000);
+    }, { once: true });
     fileInput.click();
   }
