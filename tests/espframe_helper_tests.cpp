@@ -13,6 +13,7 @@
 #include "components/espframe/slideshow_controller.h"
 #include "components/espframe/slideshow_component.h"
 #include "components/espframe/memory_pressure.h"
+#include "components/espframe/slideshow_transition.h"
 
 static void test_memory_pressure_prefetch() {
   esphome::espframe::MemoryPressurePolicy policy;
@@ -1704,8 +1705,8 @@ static void test_configuration_contract_capabilities() {
   using namespace esphome::espframe::contract;
   static_assert(CONTRACT_VERSION == 2);
   static_assert(API_VERSION == 1);
-  static_assert(SETTING_COUNT == 53);
-  static_assert(CONFIGURATION_FIELD_COUNT == 74);
+  static_assert(SETTING_COUNT == 55);
+  static_assert(CONFIGURATION_FIELD_COUNT == 76);
   bool has_language = false;
   for (const auto &field : CONFIGURATION_FIELDS) {
     if (std::string(field.key) == "device_language") {
@@ -1867,6 +1868,84 @@ static void test_device_translations() {
   set_espframe_language("en");
 }
 
+static void test_slide_transitions() {
+  using namespace esphome::espframe;
+  assert(parse_slide_transition("None") == SlideTransition::NONE);
+  assert(parse_slide_transition("Cross Fade") == SlideTransition::CROSS_FADE);
+  assert(parse_slide_transition("Fade to White") == SlideTransition::FADE_WHITE);
+  assert(parse_slide_transition("Slide Left") == SlideTransition::SLIDE_LEFT);
+  assert(parse_slide_transition("Gallery Right") == SlideTransition::NONE);
+  assert(parse_slide_transition("Random") == SlideTransition::NONE);
+
+  // Random covers every animated transition and never repeats the previous one.
+  bool seen[16] = {};
+  for (uint32_t r = 0; r < 64; ++r) {
+    const auto picked = resolve_slide_transition("Random", r, SlideTransition::SLIDE_UP);
+    assert(picked != SlideTransition::NONE);
+    assert(picked != SlideTransition::SLIDE_UP);
+    seen[static_cast<int>(picked)] = true;
+  }
+  for (const auto t : RANDOM_SLIDE_TRANSITIONS) {
+    if (t != SlideTransition::SLIDE_UP) assert(seen[static_cast<int>(t)]);
+  }
+  assert(resolve_slide_transition("Slide Up", 5, SlideTransition::SLIDE_UP) == SlideTransition::SLIDE_UP);
+
+  // Exclude the last visible transition in both navigation directions, even
+  // when consecutive backward steps would reverse a different raw choice.
+  for (const bool reverse : {false, true}) {
+    for (const auto previous : RANDOM_SLIDE_TRANSITIONS) {
+      bool choices[16] = {};
+      for (uint32_t r = 0; r < 64; ++r) {
+        const auto picked = resolve_slide_transition("Random", r, previous, reverse);
+        assert(picked != previous && picked != SlideTransition::NONE);
+        choices[static_cast<int>(picked)] = true;
+      }
+      for (const auto transition : RANDOM_SLIDE_TRANSITIONS) {
+        assert(choices[static_cast<int>(transition)] == (transition != previous));
+      }
+    }
+  }
+  assert(resolve_slide_transition("Random", 3, SlideTransition::SLIDE_LEFT, true) != SlideTransition::SLIDE_LEFT);
+  assert(resolve_slide_transition("Slide Left", 0, SlideTransition::NONE, true) == SlideTransition::SLIDE_RIGHT);
+  assert(resolve_slide_transition("Cross Fade", 0, SlideTransition::NONE, true) == SlideTransition::CROSS_FADE);
+  assert(resolve_slide_transition("None", 0, SlideTransition::NONE, true) == SlideTransition::NONE);
+
+  assert(reverse_slide_transition(SlideTransition::SLIDE_LEFT) == SlideTransition::SLIDE_RIGHT);
+  assert(reverse_slide_transition(SlideTransition::SLIDE_UP) == SlideTransition::SLIDE_DOWN);
+  assert(reverse_slide_transition(SlideTransition::FADE_BLACK) == SlideTransition::FADE_BLACK);
+
+  assert(slide_transition_duration_ms("Fast") == 500);
+  assert(slide_transition_duration_ms("Normal") == 1000);
+  assert(slide_transition_duration_ms("Slow") == 1500);
+  assert(slide_transition_duration_ms("unknown") == 1000);
+
+  assert(slide_transition_plan(SlideTransition::CROSS_FADE).blend == TransitionBlend::CROSS_FADE);
+  auto plan = slide_transition_plan(SlideTransition::FADE_WHITE);
+  assert(plan.blend == TransitionBlend::FADE_THROUGH && plan.color_rgb888 == 0xFFFFFF);
+  plan = slide_transition_plan(SlideTransition::FADE_BLACK);
+  assert(plan.blend == TransitionBlend::FADE_THROUGH && plan.color_rgb888 == 0);
+  plan = slide_transition_plan(SlideTransition::SLIDE_LEFT);
+  assert(plan.blend == TransitionBlend::MOVE && plan.dx == -1 && plan.dy == 0);
+  assert(slide_transition_plan(SlideTransition::NONE).blend == TransitionBlend::NONE);
+
+  // Screen directions map onto the panel's native axes per rotation.
+  int8_t dx = 0, dy = -1;  // up on screen
+  screen_to_panel_direction(0, dx, dy);
+  assert(dx == 0 && dy == -1);
+  dx = 0, dy = -1;
+  screen_to_panel_direction(90, dx, dy);
+  assert(dx == 1 && dy == 0);
+  dx = -1, dy = 0;  // left on screen
+  screen_to_panel_direction(90, dx, dy);
+  assert(dx == 0 && dy == -1);
+  dx = -1, dy = 0;
+  screen_to_panel_direction(180, dx, dy);
+  assert(dx == 1 && dy == 0);
+  dx = 0, dy = -1;
+  screen_to_panel_direction(270, dx, dy);
+  assert(dx == -1 && dy == 0);
+}
+
 int main() {
   test_structured_companion_pagination();
   test_memory_pressure_prefetch();
@@ -1892,6 +1971,7 @@ int main() {
   test_slideshow_component_paired_only_flow();
   test_configuration_contract_capabilities();
   test_device_translations();
+  test_slide_transitions();
   std::cout << "espframe helper tests passed\n";
   return 0;
 }
