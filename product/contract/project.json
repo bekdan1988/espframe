@@ -204,7 +204,9 @@
       "portrait_pairing",
       "portrait_pairing_range",
       "portrait_pairs_only",
-      "display_mode"
+      "display_mode",
+      "transition",
+      "transition_speed"
     ],
     "frequency": [
       "interval",
@@ -283,7 +285,9 @@
       "portrait_pairing": "portrait_pairing",
       "portrait_pairing_range": "portrait_pairing_range",
       "portrait_pairs_only": "portrait_pairs_only",
-      "display_mode": "display_mode"
+      "display_mode": "display_mode",
+      "transition": "transition",
+      "transition_speed": "transition_speed"
     },
     "frequency": {
       "interval": "interval",
@@ -587,7 +591,8 @@
     "gsl3680",
     "remote_image",
     "ledc",
-    "espframe"
+    "espframe",
+    "mipi_dsi"
   ],
   "external_component_git_source_type": "git",
   "external_component_local_source_type": "local",
@@ -713,7 +718,9 @@
       "function": "makeLayoutCard",
       "settings": [
         "photo_orientation",
-        "display_mode"
+        "display_mode",
+        "transition",
+        "transition_speed"
       ]
     },
     {
@@ -1260,7 +1267,9 @@
       "layout": {
         "settings": [
           "photo_orientation",
-          "display_mode"
+          "display_mode",
+          "transition",
+          "transition_speed"
         ]
       },
       "metadata": {
@@ -1665,6 +1674,8 @@
     "relative_unit": {},
     "photo_orientation": {},
     "display_mode": {},
+    "transition": {},
+    "transition_speed": {},
     "interval": {},
     "conn_timeout": {},
     "screen_rotation": {
