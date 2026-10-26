@@ -1,0 +1,30 @@
+# Pre-v3 ESP32-P4 chips boot-loop when internal static RAM leaves too little
+# early heap for the idle tasks. main.cpp's .bss is ESPHome's generated
+# component and automation storage; none of it is touched from IRAM ISRs, so it
+# can live in PSRAM. Task stacks (esp32 core.cpp) stay internal.
+
+# IDF's own extram_bss scheme lives in esp_wifi's fragment, which is not linked
+# on P4 hosted builds, so lwIP's PSRAM mapping silently does nothing.
+[scheme:espframe_extram_bss]
+entries:
+    bss -> extern_ram
+    common -> extern_ram
+
+[mapping:espframe_psram_bss]
+archive: libsrc.a
+entries:
+    if ESP_ALLOW_BSS_SEG_EXTERNAL_MEMORY = y:
+        main (espframe_extram_bss)
+        gsl_point_id (espframe_extram_bss)
+
+[mapping:espframe_psram_bss_lwip]
+archive: liblwip.a
+entries:
+    if ESP_ALLOW_BSS_SEG_EXTERNAL_MEMORY = y:
+        * (espframe_extram_bss)
+
+[mapping:espframe_psram_bss_mdns]
+archive: libespressif__mdns.a
+entries:
+    if ESP_ALLOW_BSS_SEG_EXTERNAL_MEMORY = y:
+        mdns_send (espframe_extram_bss)

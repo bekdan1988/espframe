@@ -4,6 +4,7 @@ from itertools import product
 from pathlib import Path
 import runpy
 import sys
+import tempfile
 import types
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -23,7 +24,14 @@ class MemoryCodegenTests(unittest.TestCase):
                     full_config["lvgl"] = [{}]
                 if psram:
                     full_config["psram"] = {}
-                core.CORE = types.SimpleNamespace(config=full_config)
+                build_dir = tempfile.TemporaryDirectory()
+                self.addCleanup(build_dir.cleanup)
+                core.CORE = types.SimpleNamespace(
+                    config=full_config,
+                    relative_build_path=lambda *parts: str(Path(build_dir.name, *parts)),
+                )
+                esp32 = types.ModuleType("esphome.components.esp32")
+                esp32.add_idf_component = MagicMock()
                 const = types.ModuleType("esphome.const")
                 const.CONF_ID = "id"
                 const.CONF_SETUP_PRIORITY = "setup_priority"
@@ -34,6 +42,8 @@ class MemoryCodegenTests(unittest.TestCase):
                     "esphome.final_validate": MagicMock(),
                     "esphome.const": const,
                     "esphome.core": core,
+                    "esphome.components": types.ModuleType("esphome.components"),
+                    "esphome.components.esp32": esp32,
                 }
                 with patch.dict(sys.modules, modules):
                     component = runpy.run_path(str(ROOT / "components/espframe/__init__.py"))
@@ -56,6 +66,14 @@ class MemoryCodegenTests(unittest.TestCase):
                 else:
                     cg.add_build_flag.assert_not_called()
                 self.assertEqual(config["setup_priority"], 500)
+                if psram:
+                    dest = Path(build_dir.name, "components", "espframe_psram_bss")
+                    esp32.add_idf_component.assert_called_once_with(
+                        name="espframe_psram_bss", path=str(dest)
+                    )
+                    self.assertTrue((dest / "linker.lf").is_file())
+                else:
+                    esp32.add_idf_component.assert_not_called()
 
     def test_lvgl_priority_validation(self):
         cv = MagicMock()

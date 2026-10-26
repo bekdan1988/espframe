@@ -1,5 +1,8 @@
 """ESPHome helper component for ESPFrame shared C++ utilities."""
 
+import os
+import shutil
+
 import esphome.codegen as cg
 import esphome.config_validation as cv
 import esphome.final_validate as fv
@@ -44,6 +47,21 @@ def validate_lvgl_priority(config):
 
 FINAL_VALIDATE_SCHEMA = validate_lvgl_priority
 
+
+def _register_psram_bss_component():
+    # The linker fragment only takes effect when the device enables
+    # CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY.
+    from esphome.components.esp32 import add_idf_component
+
+    dest_path = str(CORE.relative_build_path("components", "espframe_psram_bss"))
+    shutil.copytree(
+        os.path.join(os.path.dirname(__file__), "psram_bss"),
+        dest_path,
+        dirs_exist_ok=True,
+    )
+    add_idf_component(name="espframe_psram_bss", path=dest_path)
+
+
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
@@ -53,6 +71,8 @@ async def to_code(config):
 
     if config[CONF_MEMORY_DIAGNOSTICS]:
         cg.add_define("ESPFRAME_MEMORY_DIAGNOSTICS")
+    if "psram" in CORE.config:
+        _register_psram_bss_component()
     if "lvgl" not in CORE.config or "psram" not in CORE.config:
         return
 
