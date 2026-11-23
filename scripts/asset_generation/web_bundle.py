@@ -5,6 +5,7 @@ import json
 import re
 import subprocess
 import tempfile
+import textwrap
 
 from asset_generation.paths import (
     ROOT,
@@ -121,19 +122,23 @@ def assert_no_unreplaced_placeholders(text: str) -> None:
         raise RuntimeError("Unreplaced web app placeholders: " + ", ".join(leftovers))
 
 
+def compile_web_source(path: str | Path, *options: str) -> str:
+    compiled = subprocess.run(
+        ["node", str(ROOT / "scripts" / "build_web_app.mjs"), str(path), *options],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if compiled.returncode:
+        raise RuntimeError("Web app bundle failed:\n" + compiled.stdout + compiled.stderr)
+    return compiled.stdout
+
+
 def compile_typescript(source: str) -> str:
     with tempfile.NamedTemporaryFile("w", suffix=".ts", encoding="utf-8") as source_file:
         source_file.write(source)
         source_file.flush()
-        compiled = subprocess.run(
-            ["node", str(ROOT / "scripts" / "build_web_app.mjs"), source_file.name],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-        )
-        if compiled.returncode:
-            raise RuntimeError("Web app bundle failed:\n" + compiled.stdout + compiled.stderr)
-        return compiled.stdout
+        return compile_web_source(source_file.name)
 
 
 def setting_state_types() -> str:
@@ -146,7 +151,24 @@ def setting_state_types() -> str:
     return "{ " + "; ".join(f"{json.dumps(key)}: {value}" for key, value in fields.items()) + " }"
 
 
-def web_app_source() -> str:
+def legacy_shared_controls(source: str) -> str:
+    # The ESPHome bundle keeps its existing helper order for its gzip budget.
+    # The native entry imports the same definitions as a normal TS module.
+    controls = (WEB_SRC_DIR / "shared_controls.ts").read_text()
+    blocks = dict(re.findall(r"^// Shared controls: ([A-Z]+)\n(.*?)(?=^// Shared controls: |\Z)", controls, re.M | re.S))
+    for placeholder, name in {
+        "__ESPFRAME_SHARED_CONTROL_SELECT__": "SELECT",
+        "__ESPFRAME_SHARED_CONTROL_ELEMENT__": "ELEMENT",
+        "__ESPFRAME_SHARED_CONTROL_ACTIONS__": "ACTIONS",
+        "__ESPFRAME_SHARED_CONTROL_CARDS__": "CARDS",
+        "__ESPFRAME_SHARED_CONTROL_FIELD__": "FIELD",
+    }.items():
+        fragment = re.sub(r"^export ", "", blocks[name].strip(), flags=re.M)
+        source = replace_placeholder_once(source, f"  {placeholder}", textwrap.indent(fragment, "  "))
+    return source
+
+
+def web_app_source(embedded_css: str | None = None) -> str:
     source_paths = [
         WEB_TEMPLATE_PATH,
         *WEB_IMPORTED_MODULE_PATHS,
@@ -162,7 +184,8 @@ def web_app_source() -> str:
         placeholder: path.read_text().rstrip("\n")
         for placeholder, path in WEB_MODULE_PATHS.items()
     }
-    css = WEB_STYLE_PATH.read_text().rstrip("\n")
+    web_modules["__ESPFRAME_WEB_LIVE_HELPERS__"] = legacy_shared_controls(web_modules["__ESPFRAME_WEB_LIVE_HELPERS__"])
+    css = WEB_STYLE_PATH.read_text().rstrip("\n") if embedded_css is None else embedded_css
     timezones_json = json.dumps(timezone_options(), separators=(",", ":"))
     timezone_labels_json = json.dumps(timezone_labels(), separators=(",", ":"))
     product_settings_json = json.dumps(web_settings_metadata(), separators=(",", ":"))
@@ -224,4 +247,18 @@ def web_app_source() -> str:
 
 
 def web_app_bundle() -> str:
-    return compile_typescript(web_app_source())
+    return compile_typescript(web_app_source(compile_web_source(WEB_STYLE_PATH, "--embedded-css")))
+
+
+def native_web_app_bundle() -> str:
+    source = (WEB_SRC_DIR / "native_settings.ts").read_text()
+    replacements = {
+        "__ESPFRAME_NATIVE_PRODUCT_SETTINGS__": web_settings_metadata(),
+        "__ESPFRAME_NATIVE_TIMEZONES__": timezone_options(),
+        "__ESPFRAME_NATIVE_TIMEZONE_LABELS__": timezone_labels(),
+        "__ESPFRAME_NATIVE_CAPABILITIES_PATH__": configuration_capabilities()["capabilities_path"],
+    }
+    for placeholder, value in replacements.items():
+        source = replace_placeholder_once(source, placeholder, json.dumps(value, separators=(",", ":")))
+    assert_no_unreplaced_placeholders(source)
+    return compile_typescript(source)

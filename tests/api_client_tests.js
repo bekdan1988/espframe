@@ -53,6 +53,64 @@ async function main() {
   };
   const oldSnapshot = await oldFirmware.getConfigurationSnapshot();
   assert.equal(oldSnapshot.reset_epoch, 0, "older firmware snapshots should default to epoch zero");
+  assert.equal(oldSnapshot.secrets_configured, undefined, "older firmware lists no write-only secrets");
+
+  const secretsClient = new EspframeApiClient(contract.capabilities_path, 1000);
+  context.fetch = async (url) => {
+    if (url.endsWith("/capabilities")) return response(contract);
+    if (url.endsWith("/configuration")) {
+      return response({
+        api_version: 1, reset_epoch: 0, api_key_configured: true,
+        secrets_configured: { api_key: true, wireguard_private_key: false },
+        values: { amount: 2 }, unavailable: [],
+      });
+    }
+    return response({});
+  };
+  const secretsSnapshot = await secretsClient.getConfigurationSnapshot();
+  // The client runs in a separate vm realm, so compare structure rather than prototypes.
+  assert.equal(JSON.stringify(secretsSnapshot.secrets_configured), JSON.stringify({ api_key: true, wireguard_private_key: false }));
+  assert.equal(secretsSnapshot.api_key_configured, true);
+  assert.equal(secretsSnapshot.values.wireguard_private_key, undefined, "secret values are never part of the snapshot");
+
+  const pollingClient = new EspframeApiClient(contract.capabilities_path, 1000);
+  let nextEpoch = 3;
+  let writeEpoch;
+  context.fetch = async (url, init) => {
+    if (url.endsWith("/capabilities")) return response(contract);
+    if (init?.method === "POST") {
+      writeEpoch = JSON.parse(new URLSearchParams(init.body).get("configuration")).reset_epoch;
+      return response({ api_version: 1, status: "accepted" });
+    }
+    if (init?.headers?.["If-None-Match"] === 'W/"3"') return { status: 304 };
+    return {
+      ...response({ api_version: 1, reset_epoch: nextEpoch, values: { amount: 2 }, unavailable: [] }),
+      headers: { get: name => name === "ETag" ? 'W/"' + nextEpoch + '"' : null },
+    };
+  };
+  await pollingClient.getConfigurationSnapshot();
+  assert.equal(await pollingClient.pollConfiguration('W/"3"'), null, "an unchanged response has no JSON body");
+  nextEpoch = 4;
+  const observed = await pollingClient.pollConfiguration();
+  assert.equal(observed.etag, 'W/"4"');
+  await pollingClient.updateSettings({ amount: 5 }, []);
+  assert.equal(writeEpoch, 3, "an unaccepted background snapshot must not retag a local draft after a reset");
+  pollingClient.useConfigurationSnapshot(observed.snapshot);
+  await pollingClient.updateSettings({ amount: 5 }, []);
+  assert.equal(writeEpoch, 4, "accepting refreshed settings adopts the new reset epoch");
+
+  for (const secrets of [true, [], { wireguard_private_key: "yes" }]) {
+    const invalidClient = new EspframeApiClient(contract.capabilities_path, 1000);
+    context.fetch = async (url) => {
+      if (url.endsWith("/capabilities")) return response(contract);
+      return response({ api_version: 1, reset_epoch: 0, secrets_configured: secrets, values: {}, unavailable: [] });
+    };
+    await assert.rejects(
+      invalidClient.getConfigurationSnapshot(),
+      error => error instanceof EspframeApiError && error.message === "invalid_configuration_snapshot",
+      "a malformed secrets_configured map must be rejected",
+    );
+  }
 
   for (const firmwarePolicy of [undefined, true]) {
     const capabilities = { ...contract, firmware_rotation_policy: firmwarePolicy };
