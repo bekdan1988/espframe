@@ -210,6 +210,7 @@
     ],
     "frequency": [
       "interval",
+      "slideshow_progress_ring_enabled",
       "conn_timeout"
     ],
     "firmware_updates": [
@@ -291,6 +292,7 @@
     },
     "frequency": {
       "interval": "interval",
+      "slideshow_progress_ring_enabled": "slideshow_progress_ring_enabled",
       "conn_timeout": "conn_timeout"
     },
     "firmware_updates": {
@@ -347,6 +349,7 @@
       "tests/fixtures/compat/espframe-config-v1-developer-options.json",
       "tests/fixtures/compat/espframe-config-v1-future-unknown-fields.json",
       "tests/fixtures/compat/espframe-config-v3-device-language.json",
+      "tests/fixtures/compat/espframe-config-v3-slideshow-progress-ring.json",
       "tests/fixtures/compat/espframe-config-v1-malformed-noncritical-values.json"
     ],
     "rejected_fields": [
@@ -624,14 +627,9 @@
       ],
       "manual_entities": [
         "immich_url",
-        "api_key"
-      ]
-    },
-    {
-      "id": "wireguard",
-      "label": "WireGuard VPN",
-      "tab": "immich",
-      "function": "makeWireguardCard",
+        "api_key",
+        "wireguard_private_key"
+      ],
       "static_entities": [
         "wireguard_enabled",
         "wireguard_endpoint",
@@ -643,9 +641,6 @@
         "wireguard_connected",
         "wireguard_tunnel_enabled",
         "wireguard_handshake_age"
-      ],
-      "manual_entities": [
-        "wireguard_private_key"
       ]
     },
     {
@@ -654,7 +649,8 @@
       "tab": "immich",
       "function": "makeFrequencyCard",
       "settings": [
-        "interval"
+        "interval",
+        "slideshow_progress_ring_enabled"
       ]
     },
     {
@@ -941,6 +937,7 @@
     "backup-import-unsupported-version"
   ],
   "web_live_render_state_keys": [
+    "slideshow_progress_ring_enabled",
     "screen_rotation",
     "portrait_pairing",
     "developer_features_enabled",
@@ -1366,6 +1363,7 @@
       "frequency": {
         "settings": [
           "interval",
+          "slideshow_progress_ring_enabled",
           "conn_timeout"
         ]
       }
@@ -1389,7 +1387,8 @@
   "web_local_state_keys": [
     "api_key_configured",
     "immich_filter_support",
-    "portrait_pair_framing",
+    "photo_source_mode",
+    "album_id",
     "wireguard_available",
     "wireguard_private_key_configured",
     "backlight_on",
@@ -1419,7 +1418,7 @@
   ],
   "date_filter_relative_anchor": "ending today",
   "date_filter_time_source": "frame's configured time",
-  "portrait_pairing_behavior": "pair portrait photos from a configurable nearby-day range side-by-side",
+  "portrait_pairing_behavior": "pair portrait photos from a configurable date range side-by-side",
   "portrait_pairing_rotation_behavior": "disabled while the screen is in portrait rotation",
   "metadata_overlay_fields": [
     "Date",
@@ -1634,6 +1633,7 @@
     "devices/guition-esp32-p4-jc8012p4a1-v3/packages.yaml",
     "docs/public/webserver/app.js",
     "docs/public/webserver/style.css",
+    "firmware/native/main/web/admin/app.js",
     "firmware/native/main/web/shared_settings.js",
     "components/espframe/i18n_generated.h"
   ],
@@ -1646,6 +1646,7 @@
     "devices/guition-esp32-p4-jc8012p4a1-v3/packages.yaml": "# ESPFRAME: generated from product/contract; run `npm run generate` to update.",
     "docs/public/webserver/app.js": "// ESPFRAME: generated from typed docs/webserver/src and product/contract; run `npm run generate` to update.",
     "docs/public/webserver/style.css": "/* ESPFRAME: generated from docs/webserver/src/style.css; run `npm run generate` to update. */",
+    "firmware/native/main/web/admin/app.js": "// ESPFRAME: generated from typed docs/webserver/src and product/contract; run `npm run generate` to update.",
     "firmware/native/main/web/shared_settings.js": "// ESPFRAME: generated from typed docs/webserver/src and product/contract; run `npm run generate` to update.",
     "components/espframe/i18n_generated.h": "// ESPFRAME: generated from product/translations; run `npm run generate` to update."
   },
@@ -1777,6 +1778,7 @@
     "transition": {},
     "transition_speed": {},
     "interval": {},
+    "slideshow_progress_ring_enabled": {},
     "conn_timeout": {},
     "screen_rotation": {
       "options": [

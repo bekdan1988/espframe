@@ -333,7 +333,19 @@ static void test_immich_body_helpers() {
   assert(portrait_pairing_range_days("Same Day") == 0);
   assert(portrait_pairing_range_days("Within 1 Day") == 1);
   assert(portrait_pairing_range_days("Within 2 Days") == 2);
+  assert(portrait_pairing_range_days("Within 3 Days") == 3);
+  assert(portrait_pairing_range_days("Within 5 Days") == 5);
+  assert(portrait_pairing_range_days("Within 7 Days") == 7);
+  assert(portrait_pairing_range_days("Within 14 Days") == 14);
+  assert(portrait_pairing_range_days("Within 30 Days") == 30);
+  assert(portrait_pairing_range_days("Any Time") == IMMICH_PORTRAIT_PAIR_ANY_TIME);
   ImmichDateRange no_filter;
+  assert(build_immich_companion_date_filter_extra("2026-01-01", no_filter, 30) ==
+         "\"takenAfter\":\"2025-12-02T00:00:00.000Z\","
+         "\"takenBefore\":\"2026-01-31T23:59:59.999Z\"");
+  assert(build_immich_companion_date_filter_extra("2026-01-01", no_filter, IMMICH_PORTRAIT_PAIR_ANY_TIME).empty());
+  assert(build_immich_companion_date_filter_extra("", fixed, IMMICH_PORTRAIT_PAIR_ANY_TIME) ==
+         build_immich_date_filter_extra(fixed));
   assert(build_immich_companion_date_filter_extra("2026-01-01", no_filter, 2) ==
          "\"takenAfter\":\"2025-12-30T00:00:00.000Z\","
          "\"takenBefore\":\"2026-01-03T23:59:59.999Z\"");
@@ -1942,14 +1954,19 @@ static void test_configuration_contract_capabilities() {
   using namespace esphome::espframe::contract;
   static_assert(CONTRACT_VERSION == 2);
   static_assert(API_VERSION == 1);
-  static_assert(SETTING_COUNT == 55);
-  static_assert(CONFIGURATION_FIELD_COUNT == 84);
+  static_assert(SETTING_COUNT == 56);
+  static_assert(CONFIGURATION_FIELD_COUNT == 85);
   bool has_language = false;
+  bool has_progress_ring = false;
   int wireguard_fields = 0;
   bool private_key_is_secret = false;
   for (const auto &field : CONFIGURATION_FIELDS) {
     if (std::string(field.key) == "device_language") {
       has_language = std::string(field.domain) == "select" && std::string(field.entity_name) == "Device: Language";
+    }
+    if (std::string(field.key) == "slideshow_progress_ring_enabled") {
+      has_progress_ring = std::string(field.domain) == "switch" &&
+                          std::string(field.entity_name) == "Photos: Slideshow Progress Ring" && !field.secret;
     }
     if (std::string(field.key).rfind("wireguard_", 0) == 0) {
       wireguard_fields++;
@@ -1960,6 +1977,7 @@ static void test_configuration_contract_capabilities() {
     }
   }
   assert(has_language);
+  assert(has_progress_ring);
   assert(wireguard_fields == 8);
   assert(private_key_is_secret);
   assert(std::string(CAPABILITIES_PATH) == "/espframe/api/v1/capabilities");
@@ -2061,6 +2079,15 @@ static void test_structured_companion_pagination() {
   assert(state.advance_portrait_search(2, "ignored", false, 0));
   assert(state.portrait_search_page == 2 && state.portrait_search_cursor.empty());
   assert(!state.advance_portrait_search(0, "ignored", false, 0));
+  for (bool structured : {false, true}) {
+    state.reset();
+    const int any_time = IMMICH_PORTRAIT_PAIR_ANY_TIME;
+    assert(state.advance_portrait_search(0, "", structured, any_time));
+    assert(state.advance_portrait_search(2, "page-2", structured, any_time));
+    assert(state.advance_portrait_search(3, "page-3", structured, any_time));
+    assert(!state.advance_portrait_search(4, "page-4", structured, any_time));
+    assert(!state.portrait_search_expanded);
+  }
   ImmichFilterConfig config;
   ImmichFilterBranch branch;
   const std::string cursor = "opaque\"cursor";

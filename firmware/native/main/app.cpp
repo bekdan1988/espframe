@@ -13,6 +13,7 @@
 #include "live_trial.h"
 #include "native_network.h"
 #include "photo_controls.h"
+#include "photo_zoom_cache.h"
 #include "playback_transition.h"
 #include "preview_decoder.h"
 #include "recovery_card.h"
@@ -21,6 +22,7 @@
 #include "slide_dwell.h"
 #include "slide_prefetch.h"
 #include "slideshow_interval.h"
+#include "slideshow_progress_ring.h"
 #include "slideshow_transition.h"
 #include "swipe.h"
 #include "swipe_input.h"
@@ -94,7 +96,7 @@ class PhotoControlsRenderer {
     if (worker_) {
       // Each core writes whole rows. Join before painting the toolbar or submitting the frame.
       xTaskNotifyGive(worker_);
-      controls_.draw_rows(panel_height / 2, panel_height);
+      controls_.draw_rows(controls_.split_row(), panel_height);
       xSemaphoreTake(done_, portMAX_DELAY);
     } else {
       controls_.draw_rows(0, panel_height);
@@ -107,7 +109,7 @@ class PhotoControlsRenderer {
     const auto &renderer = *static_cast<PhotoControlsRenderer *>(context);
     while (true) {
       ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-      renderer.controls_.draw_rows(0, panel_height / 2);
+      renderer.controls_.draw_rows(0, renderer.controls_.split_row());
       xSemaphoreGive(renderer.done_);
     }
   }
@@ -332,7 +334,7 @@ class SlideLoader {
         this->settings_.photo_orientation = PhotoOrientation::Any;
         this->settings_.capture_dates = {};
         this->settings_.portrait_pairing = this->settings_.portrait_pairs_only = true;
-        this->settings_.portrait_pairing_days = 2;
+        this->settings_.portrait_pairing_range_index = 2;
         this->settings_.display_mode = DisplayMode::Fit;
         if constexpr (trial_replay_pair_fill)
           this->settings_.pair_framing = PairFraming::Fill;
@@ -640,10 +642,18 @@ void run(void *) {
   SwipeInput input;
   static PhotoControls controls;
   static PhotoControlsRenderer controls_renderer{controls};
+  static PhotoZoomCache zoom_cache;
+  struct PreparedZoomFrame {
+    uint16_t *pixels{};
+    const uint16_t *source{};
+    int progress{};
+    ScreenRotation rotation{};
+  } prepared_zoom;
   int last_control_progress = 0;
   uint8_t last_text_opacity = PhotoControls::opaque;
   ScreenSchedule schedule{loader.schedule()};
   SlideDwell dwell;
+  int last_ring_progress = -1;
   SlidePrefetch prefetch{swipe.settled(), cache_slots, viewport.width};
   AutoplayFade fade;
   auto previous_transition = SlideTransition::NONE;
@@ -702,15 +712,21 @@ void run(void *) {
   int64_t detail_request_us{};
   std::optional<DetailHandoff> detail_to_submit;
   std::optional<DetailHandoff> detail_submitted;
+  const int64_t refresh_period_us = Display::nominal_frame_period_us();
   if constexpr (trace_enabled)
-    trace.start(Display::nominal_frame_period_us());
+    trace.start(refresh_period_us);
   if constexpr (!esphome_trial || trial_immich)
     loader.start_network();
-  if constexpr (!SWIPE_TRIAL_BENCHMARK)
+  if constexpr (!SWIPE_TRIAL_BENCHMARK) {
     controls_renderer.start();
+    if (!esphome_trial && live && !trial_fixtures && display.can_pin_frame() &&
+        PhotoControls::supports_cached_steps(refresh_period_us))
+      zoom_cache.start(player_core, loader_core);
+  }
   const auto submit_frame = [&](PixelPosition position, bool moving = true, bool resisted = false,
-                                const ScanoutFrame *frame = nullptr, std::optional<SlideRange> sources = {}) {
-    if (!display.submit(position, frame, sources))
+                                const ScanoutFrame *frame = nullptr, std::optional<SlideRange> sources = {},
+                                const uint16_t *prepared = nullptr) {
+    if (!display.submit(position, frame, sources, prepared))
       return false;
     if constexpr (trial_detail_metrics) {
       if (detail_to_submit && position == detail_to_submit->slide * viewport.width)
@@ -727,8 +743,9 @@ void run(void *) {
     return true;
   };
   const auto submit_autoplay_frame = [&](uint16_t *output, uint8_t progress) {
-    // A transition can be pinned and dragged later, so keep its pixels caption-free.
+    // A transition can be pinned and dragged later, so keep it clear of these overlays.
     last_caption = {};
+    last_ring_progress = -1;
     clock.draw(output, true);
     clock_dirty = false;
     if constexpr (capture_motion)
@@ -752,7 +769,6 @@ void run(void *) {
   constexpr bool stage_all_pairs = trial_replay_staged_detail && !SWIPE_TRIAL_REPLAY_EDGE_DETAIL;
   unsigned reported_ahead = 0;
   std::array<SlideRetry, SlideCache::capacity> retries{};
-  const int64_t refresh_period_us = Display::nominal_frame_period_us();
   const auto drag_moving_window_us = 3 * refresh_period_us;
   const auto drag_start_guard_us = 6 * refresh_period_us;
   const auto edge_drag_guard_us = 4 * refresh_period_us;
@@ -801,6 +817,7 @@ void run(void *) {
       brightness = scheduled_brightness;
     }
     if (const auto scanout = display.poll_presented()) {
+      controls.presented(*scanout);
       awaiting_rotation_frame = false;
       if constexpr (trial_replay_touch) {
         const auto presented = display.presented_position();
@@ -973,6 +990,7 @@ void run(void *) {
             if (!preparing_rotation || *preparing_rotation != wanted_rotation)
               loader.yield_to_swipe();
           } else if (const auto lease = cache.reserve(center, center, center, true)) {
+            zoom_cache.reclaim_for_photo_load(center);
             loader.submit(*lease, source_revision, false, Preparation::RotateCached, wanted_rotation,
                           {cache.find(center), rotation, paired_slots[*slot]});
             preparing = center;
@@ -1133,7 +1151,13 @@ void run(void *) {
     if ((controls.target_open() || last_control_progress != 0) &&
         (!input.awake() || network.recovery_status() != NativeNetwork::RecoveryStatus::Off))
       controls.reset();
-    const int control_progress = controls.progress(now);
+    // A busy or interrupted zoom worker must return its spare framebuffer
+    // even if the normal controls rendering branch is skipped by a fade.
+    zoom_cache.service(display, cache, !input.awake() || input.engaged() || !swipe.idle() || fade.running() ||
+                       fade.held() || controls.animating() || awaiting_rotation_frame || prefetch.requested().has_value());
+    const bool cached_resize = swipe.idle() && zoom_cache.available_for(cache, swipe.settled(), rotation);
+    const auto control_frame = controls.next_frame(now, refresh_period_us, cached_resize);
+    const int control_progress = control_frame.progress;
     const uint8_t text_opacity = controls.text_opacity(now);
 
     if (blend.poll_complete() && fade.running()) {
@@ -1181,7 +1205,7 @@ void run(void *) {
                                  ? prefetch.can_defer_drag(ready, origin, swipe.position(),
                                                            drag == Swipe::DragActivity::Starting, first_motion_pending)
                                  : !contact_engaged && prefetch.can_defer_settle(ready, swipe.settle_destination());
-      const bool scaling_at_rest = controls.animating(control_progress) && !swipe.dragging() && !swipe.settling();
+      const bool scaling_at_rest = controls.animating() && !swipe.dragging() && !swipe.settling();
       pixel_work_deferred = (user_motion && can_defer) || scaling_at_rest;
       protect_cached_copy = drag == Swipe::DragActivity::Starting && !first_motion_pending && !can_defer &&
                             !prefetch.requested() && ready.contains(origin) && ready.last == origin + 1 &&
@@ -1213,6 +1237,8 @@ void run(void *) {
           return false;
         if constexpr (trace_enabled)
           refill_started_us = esp_timer_get_time();
+        const auto zoom_landing = swipe.settling() ? swipe.settle_destination() : center;
+        zoom_cache.reclaim_for_photo_load(zoom_landing);
         loader.submit(*lease, source_revision, source_anchor >= 0, preparation, rotation, {});
         preparing = candidate;
         preparing_refresh = refresh;
@@ -1285,6 +1311,7 @@ void run(void *) {
         snapshot = nullptr;
       }
     }
+    int ring_progress = -1;
     if (live) {
       const bool first_photo = swipe.settled() == 0;
       const bool source_changed = source_anchor == swipe.settled();
@@ -1293,8 +1320,12 @@ void run(void *) {
                             text_opacity == PhotoControls::opaque;
       // Keep the settled photo available for inspection during the touch replay.
       constexpr bool hold_photo = SWIPE_TRIAL_REPLAY_HISTORY || SWIPE_TRIAL_WIFI_OUTAGE || trial_replay_touch;
-      if ((!hold_photo || first_photo) &&
-          dwell.elapsed(now, dwelling, first_photo || source_changed ? 0 : loader.slide_interval_us())) {
+      const auto duration = first_photo || source_changed ? 0 : loader.slide_interval_us();
+      const bool advance_due = (!hold_photo || first_photo) && dwell.elapsed(now, dwelling, duration);
+      if (dwelling && duration > 0 && !hold_photo &&
+          active_slideshow_progress_ring.load(std::memory_order_relaxed))
+        ring_progress = dwell.progress_tenths_of_a_degree(now, duration);
+      if (advance_due && zoom_cache.release_before_transition()) {
         const auto anchor = swipe.settled();
         if (first_photo) {
           swipe.advance(now, Swipe::Transition::Quick);
@@ -1309,6 +1340,7 @@ void run(void *) {
               swipe.show(anchor + 1);
               position = swipe.position();
               dwell.reset();
+              ring_progress = -1;
             }
           } else if (previous_transition == SlideTransition::SLIDE_LEFT) {
             // The automatic move follows the same slide order as a swipe.
@@ -1361,6 +1393,7 @@ void run(void *) {
           if (opacity == AutoplayFade::opaque) {
             blitter.slides(output, {target, nullptr, 0});
             last_caption = {};
+            last_ring_progress = -1;
             clock.draw(output);
             clock_dirty = false;
             swipe.show(fade.target());
@@ -1419,6 +1452,24 @@ void run(void *) {
                                source_notice != PhotoSourceStatus::None;
     const auto notice_language = paints_notice ? active_device_language.load(std::memory_order_relaxed) : uint8_t{0};
     const bool sliding = swipe.dragging() || swipe.settling();
+    if (sliding || paints_notice)
+      ring_progress = -1;
+    const bool zoom_source_valid = !sliding && !use_edge && position == center * viewport.width && !fade.held();
+    // This worker has lower priority than photo preparation. Start on the
+    // visible slide while downloads proceed, and yield to urgent edge refill.
+    const bool zoom_can_prepare = zoom_source_valid && visible_and_idle && center > 0 && !prefetch.requested() &&
+                                  !awaiting_rotation_frame && !paints_notice && !controls.animating();
+    zoom_cache.update(display, cache, center, rotation, zoom_can_prepare, preparing < 0 && ready_last > center);
+    const auto *zoom_source = zoom_source_valid ? cache.find(center) : nullptr;
+    const bool zoom_ready = zoom_source && zoom_cache.available_for(cache, center, rotation);
+    if (!zoom_ready || prepared_zoom.source != zoom_source || prepared_zoom.progress != control_progress ||
+        prepared_zoom.rotation != rotation)
+      prepared_zoom = {};
+    if (const int step = PhotoControls::cached_step(control_progress);
+        step && control_progress != last_control_progress && zoom_ready && !prepared_zoom.pixels) {
+      if (auto *scratch = display.preparation_buffer(); scratch && zoom_cache.decode_for(cache, center, rotation, step, scratch))
+        prepared_zoom = {scratch, zoom_source, control_progress, rotation};
+    }
     const bool clock_changed = show_clock && (clock_dirty || (clock.visible() && text_opacity != last_text_opacity));
     const auto caption_slot = caption_sample.opacity && !show_recovery ? cache.ready_slot(caption_sample.slide)
                                                                       : std::nullopt;
@@ -1433,7 +1484,8 @@ void run(void *) {
          (control_progress == 0 &&
           (show_recovery != recovery_painted || source_notice != painted_source_status ||
            connection_notice != painted_connection_notice || notice_language != painted_notice_language ||
-           (display.borrowing() && !sliding) || clock_changed || caption_sample != last_caption)))) {
+           (display.borrowing() && !sliding) || clock_changed || caption_sample != last_caption ||
+           ring_progress != last_ring_progress)))) {
       const auto index = inside / viewport.width;
       const int offset = inside % viewport.width;
       const auto slide_pixels = [&](SlideIndex slide) {
@@ -1459,14 +1511,24 @@ void run(void *) {
           last_submitted = position;
           last_inside = inside;
           last_control_progress = control_progress;
+          controls.submitted(control_frame);
           last_text_opacity = text_opacity;
         };
         if (control_progress != 0) {
-          controls.prepare(output, span, pull, rotation, control_progress);
-          controls_renderer.draw();
+          const auto *prepared = prepared_zoom.pixels;
+          if (!prepared) {
+            controls.prepare(output, span, pull, rotation, control_progress);
+            controls_renderer.draw();
+          }
           const auto started_submit = trial_immich && motion != 0 ? esp_timer_get_time() : 0;
-          submit_frame(position, position != last_submitted, use_edge);
+          if (!submit_frame(position, position != last_submitted, use_edge, nullptr, {}, prepared)) {
+            prepared_zoom = {};
+            display.wait_for_frame_or_tick();
+            continue;
+          }
+          last_ring_progress = -1;
           finish_render(started_submit);
+          prepared_zoom = {};
           display.wait_for_frame_or_tick();
           continue;
         }
@@ -1505,7 +1567,7 @@ void run(void *) {
                              position == swipe.settle_destination() * viewport.width &&
                              (swipe.settling() || (swipe.idle() && display.borrowing()));
         if (linked_scanout_ok && !viewport.portrait && input.awake() && snapshot == nullptr && !fade.held() && !paints_notice &&
-            ((sliding && (use_edge || offset != 0)) || landing)) {
+            ring_progress < 0 && ((sliding && (use_edge || offset != 0)) || landing)) {
           segment_started = esp_timer_get_time();
           const auto copy_rows = [&](auto *to, const auto *from, int rows) { blitter.copy_panel_rows(to, from, rows); };
           const bool paint_clock = show_clock && clock.visible() && text_opacity != 0;
@@ -1552,8 +1614,12 @@ void run(void *) {
           }
         }
 #endif
-        if (!submitted)
+        if (!submitted) {
+          if (ring_progress >= 0)
+            paint_slideshow_progress_ring(output, viewport, ring_progress);
           submit_frame(position, position != last_submitted, use_edge);
+        }
+        last_ring_progress = ring_progress;
         last_caption = caption_sample;
         finish_render(started_submit);
       }
@@ -1572,6 +1638,7 @@ void start_player() {
       return;
   } else {
     start_web_logs();
+    ESP_LOGI(tag, "Reset reason: %s", last_reset_reason().data());
     start_usb_setup(network);
   }
   // The standalone player also loads and normalizes its saved configuration at startup.

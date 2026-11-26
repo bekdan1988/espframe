@@ -379,7 +379,7 @@ int main() {
   assert(legacy.connection_timeout_seconds == 600);
   assert(legacy.transition == "Cross Fade" && legacy.transition_speed == "Fast");
   assert(legacy.portrait_pairing);
-  assert(!legacy.portrait_pairs_only && !legacy.requires_portrait_pair() && legacy.portrait_pairing_days == 0);
+  assert(!legacy.portrait_pairs_only && !legacy.requires_portrait_pair() && legacy.portrait_pairing_days() == 0);
   assert(legacy.brightness_day == 64);
   assert(!legacy.tone.night_override);
   assert(legacy.metadata.language == 0);
@@ -612,7 +612,7 @@ int main() {
            R"({"values":{"brightness_day":50,"portrait_pairs_only":"true"}})",
            R"({"values":{"brightness_day":50,"transition":"Dissolve"}})",
            R"({"values":{"brightness_day":50,"transition_speed":500}})",
-           R"({"values":{"brightness_day":50,"portrait_pairing_range":"Within 3 Days"}})",
+           R"({"values":{"brightness_day":50,"portrait_pairing_range":"Within 4 Days"}})",
            R"({"values":{"brightness_day":50,"api_key":""}})",
            R"({"values":{"brightness_day":50,"brightness_day":80}})",
            R"({"values":{"brightness_day":50,"unsupported":true}})",
@@ -632,7 +632,7 @@ int main() {
   assert(!update_configuration(
       R"({"values":{"portrait_pairing":false,"portrait_pairs_only":true,"portrait_pairing_range":"Within 2 Days"}})").error);
   assert(current.read() && !current.portrait_pairing && current.portrait_pairs_only && !current.requires_portrait_pair());
-  assert(current.portrait_pairing_days == 2);
+  assert(current.portrait_pairing_days() == 2);
   const Json paused(configuration_snapshot(current), cJSON_Delete);
   assert(paused);
   const auto *paused_values = cJSON_GetObjectItemCaseSensitive(paused.get(), "values");
@@ -641,9 +641,20 @@ int main() {
   assert(cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(paused_values, "portrait_pairing_range")) ==
          std::string_view("Within 2 Days"));
   assert(Settings::save_playback(R"({"immich_url":"https://photos.test","portrait_pairing":true})"));
-  assert(current.read() && current.requires_portrait_pair() && current.portrait_pairing_days == 2);
+  assert(current.read() && current.requires_portrait_pair() && current.portrait_pairing_days() == 2);
   assert(Settings::save_playback(R"({"immich_url":"https://photos.test","portrait_pairs_only":false})"));
   assert(current.read() && current.portrait_pairing && !current.requires_portrait_pair());
+
+  for (const auto &[range, days] : std::array<std::pair<std::string_view, int>, 6>{{
+           {"Within 3 Days", 3}, {"Within 5 Days", 5}, {"Within 7 Days", 7}, {"Within 14 Days", 14},
+           {"Within 30 Days", 30}, {"Any Time", espframe::native::portrait_pairing_any_time}}}) {
+    const auto update = R"({"values":{"portrait_pairing_range":")" + std::string(range) + R"("}})";
+    assert(!update_configuration(update.c_str()).error);
+    assert(current.read() && current.portrait_pairing_days() == days);
+    const Json snapshot(configuration_snapshot(current), cJSON_Delete);
+    const auto *values = cJSON_GetObjectItemCaseSensitive(snapshot.get(), "values");
+    assert(cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(values, "portrait_pairing_range")) == range);
+  }
 
   assert(!current.has_prepared_slides());
   const auto before_service = stored;
@@ -890,7 +901,19 @@ int main() {
   assert(Settings::save(R"({"immich_url":"http://fresh.test","immich_key":"fresh-key","web_password":"new-settings",
       "display_mode":"Fit"})"));
   assert(current.read() && current.display_mode == DisplayMode::Fit && current.pair_display_mode() == DisplayMode::Fill);
+  assert(current.pair_divider == espframe::native::PairDivider::Black);
+  const auto before_divider = espframe::native::photo_source_revision.load();
+  const auto before_divider_selection = espframe::native::photo_selection_revision.load();
+  const auto white_divider = update_configuration(R"({"values":{"portrait_pair_divider":"White"}})");
+  assert(!white_divider.error && !white_divider.restart_required && espframe::native::photo_source_revision.load() == before_divider + 1);
+  assert(espframe::native::photo_selection_revision.load() == before_divider_selection);
+  assert(current.read() && current.pair_divider == espframe::native::PairDivider::White);
+  assert(Settings::save(R"({"immich_url":"http://fresh.test","immich_key":"fresh-key","web_password":"new-settings",
+      "display_mode":"Fit"})"));
+  assert(current.read() && current.pair_divider == espframe::native::PairDivider::White);
   const auto prior_framing = stored;
+  assert(update_configuration(R"({"values":{"portrait_pair_divider":"Grey"}})").error);
+  assert(stored == prior_framing);
   assert(update_configuration(R"({"values":{"portrait_pair_framing":"Stretch"}})").error);
   assert(stored == prior_framing);
   assert(!update_configuration(R"({"values":{"display_mode":"Fill","portrait_pair_framing":"Fit"}})").error);
@@ -955,6 +978,15 @@ int main() {
   fail_commit = false;
   assert(current.read() && current.slide_seconds == 20 && active_slideshow_interval.load() == 20);
   assert(espframe::native::photo_source_revision.load() == interval_revision);
+  assert(!current.slideshow_progress_ring_enabled);
+  const auto ring_on = update_configuration(R"({"values":{"slideshow_progress_ring_enabled":true}})");
+  assert(!ring_on.error && ring_on.updated == 1 && !ring_on.restart_required);
+  assert(current.read() && current.slideshow_progress_ring_enabled &&
+         espframe::native::active_slideshow_progress_ring.load());
+  const auto ring_off = update_configuration(R"({"values":{"slideshow_progress_ring_enabled":false}})");
+  assert(!ring_off.error && ring_off.updated == 1 && !ring_off.restart_required);
+  assert(current.read() && !current.slideshow_progress_ring_enabled &&
+         !espframe::native::active_slideshow_progress_ring.load());
 
   using espframe::native::PhotoPreset;
   using espframe::native::active_photo_preset;
@@ -1243,6 +1275,22 @@ int main() {
   const auto saved_list = apply_shared_filters(R"({"values":{"location_enabled":true,"filter_city":"London"}})");
   assert(saved_list.photo_filters.criteria.album_ids == "33333333-3333-4333-8333-333333333333");
   assert(saved_list.photo_source.album_id == "11111111-1111-4111-8111-111111111111");
+
+  const auto standalone = apply_shared_filters(R"({"values":{"photo_source_mode":"album",
+      "album_id":"AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"}})");
+  assert(standalone.photo_source.mode == PhotoSourceMode::Album);
+  assert(standalone.photo_source.album_id == "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+  assert(standalone.photo_filters.criteria.album_ids == saved_list.photo_filters.criteria.album_ids);
+  assert(current.read());
+  const Json standalone_snapshot(configuration_snapshot(current), cJSON_Delete);
+  const auto *standalone_values = cJSON_GetObjectItemCaseSensitive(standalone_snapshot.get(), "values");
+  assert(std::string_view(cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(standalone_values, "photo_source_mode"))) == "album");
+  assert(std::string_view(cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(standalone_values, "album_id"))) ==
+         standalone.photo_source.album_id);
+  assert(update_configuration(R"({"values":{"photo_source_mode":"album","album_id":"invalid"}})").error);
+  assert(update_configuration(R"({"values":{"photo_source_mode":"all","photo_source":"Memories"}})").error);
+  const auto restored_custom = apply_shared_filters(R"({"values":{"photo_source_mode":"custom"}})");
+  assert(restored_custom.photo_source.mode == PhotoSourceMode::Custom && restored_custom.photo_filters.criteria.location_enabled);
 
   save_filter_frame("favorites");
   assert(current.read() && !current.photo_filters.criteria.favorites_enabled);

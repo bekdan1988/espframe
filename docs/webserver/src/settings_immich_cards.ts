@@ -183,16 +183,16 @@
     connBody.appendChild(productSelectSettingField("Connection Timeout", "conn_timeout"));
 
     connBody.appendChild(connStatus);
+    if (S.wireguard_available) connBody.appendChild(makeWireguardSettings());
     return makeCollapsibleCard("Connection", connBody, true);
 
   }
 
   function saveAndVerifyWireguardPrivateKey(value) {
     var privateKey = String(value || "").trim();
-    if (!isValidWireguardKey(privateKey)) return Promise.reject(Error("invalid_wireguard_key"));
-    // Like the API key, the private key is write-only: only whether it is set
-    // enters browser state.
-    return settingSaves.save({ wireguard_private_key_configured: true }, function () {
+    var configured = !!privateKey;
+    // The key is write-only. Only whether it is set enters browser state.
+    return settingSaves.save({ wireguard_private_key_configured: configured }, function () {
       return apiClient.updateSettings(
         { wireguard_private_key: privateKey },
         [legacySettingWrite("wireguard_private_key", privateKey)]
@@ -200,23 +200,7 @@
         .then(function () { return delayMs(150); })
         .then(function () { return getConfigurationSnapshot(); })
         .then(function (snapshot) {
-          if (!snapshot.secrets_configured || !snapshot.secrets_configured.wireguard_private_key) {
-            throw Error("verify_failed");
-          }
-        });
-    });
-  }
-
-  function removeWireguardPrivateKey() {
-    return settingSaves.save({ wireguard_private_key_configured: false }, function () {
-      return apiClient.updateSettings(
-        { wireguard_private_key: "" },
-        [legacySettingWrite("wireguard_private_key", "")]
-      )
-        .then(function () { return delayMs(150); })
-        .then(function () { return getConfigurationSnapshot(); })
-        .then(function (snapshot) {
-          if (!snapshot.secrets_configured || snapshot.secrets_configured.wireguard_private_key) {
+          if (!snapshot.secrets_configured || !!snapshot.secrets_configured.wireguard_private_key !== configured) {
             throw Error("verify_failed");
           }
         });
@@ -230,11 +214,10 @@
     return value === true || value === "true" || value === "ON";
   }
 
-  function updateWireguardStatus(statusEl, badgeEl) {
+  function updateWireguardStatus(statusEl) {
     if (!statusEl) return;
     if (S.wireguard_connected === undefined || S.wireguard_connected === "") {
       statusEl.style.display = "none";
-      setBadgeActive(badgeEl, false);
       return;
     }
     statusEl.style.display = "";
@@ -242,38 +225,29 @@
     var connected = running && wireguardSensorOn(S.wireguard_connected);
     var age = running ? formatWireguardHandshakeAge(S.wireguard_handshake_age) : "";
     var message = !running ? "Tunnel is off" : (connected ? "Connected" : "Not connected");
-    if (age) message += " \u00b7 last handshake " + age;
-    if (!!S.wireguard_enabled !== running) message += " \u00b7 restart to apply the saved setting";
+    statusEl.title = age ? "Last handshake " + age : "";
     setStatus(statusEl, message, connected ? "green" : (running ? "red" : "orange"));
-    setBadgeActive(badgeEl, connected);
   }
 
   function updateWireguardStatusFromPage() {
-    updateWireguardStatus(document.getElementById("wireguard-status"), document.getElementById("wireguard-badge"));
+    updateWireguardStatus(document.getElementById("wireguard-status"));
   }
 
-  function makeWireguardCard() {
-    // Firmware without the WireGuard entities does not list the secret.
-    if (!S.wireguard_available) return null;
-    var body = el("div");
-    var tunnelStatus = el("div", "status mb-12");
+  function makeWireguardSettings() {
+    var body = el("div", "wireguard");
+    var tunnelStatus = el("div", "disclosure-badge");
     tunnelStatus.id = "wireguard-status";
-    var tunnelBadge = makeBadge(false, "Connected");
-    tunnelBadge.id = "wireguard-badge";
-    updateWireguardStatus(tunnelStatus, tunnelBadge);
-    body.appendChild(tunnelStatus);
+    updateWireguardStatus(tunnelStatus);
     var status = el("div", "status mb-12");
     var restartNotice = el("div", "reset-backup-notice mb-12");
-    restartNotice.style.display = "none";
+    showRestart(false);
+    var restartRequired;
     var restartText = el("span");
     restartText.textContent = "WireGuard changes apply after the frame restarts.";
-    var restartButton = button("Restart now", "btn btn-secondary btn-sm", function () {
+    var restartButton = button("Restart now", "btn btn-primary btn-sm", function () {
       restartButton.disabled = true;
       restartButton.textContent = "Restarting...";
-      rebootFrame()
-        .catch(function () {
-          // Shared request helpers already surface failures in the UI.
-        })
+      rebootFrame().then(() => showRestart(false), () => {})
         .finally(function () {
           setTimeout(function () {
             restartButton.disabled = false;
@@ -284,31 +258,38 @@
     restartNotice.appendChild(restartText);
     restartNotice.appendChild(restartButton);
 
-    function saved(message) {
+    function showRestart(pending) {
+      restartNotice.style.display = pending ? "" : "none";
+    }
+    function saved(message = "Saved") {
       setStatus(status, message, "green", 3000);
-      restartNotice.style.display = "";
+      if (restartRequired === undefined) showRestart(true);
+    }
+    function saveWireguardSetting(key, value) {
+      if (String(value) === String(S[key] ?? "")) return;
+      saveSetting(key, value).then(() => saved(), () => {});
     }
     function failed(message) {
       setStatus(status, message, "red");
     }
 
     var detailsBody = el("div");
+    var panel = makeInlineDisclosure("Wireguard Vpn Settings", detailsBody, false);
     var enabled = toggleSettingRow({
       label: "Connect through WireGuard",
       value: !!S.wireguard_enabled,
       getValue: function () { return !!S.wireguard_enabled; },
       setValue: function (value) { S.wireguard_enabled = value; },
-      details: detailsBody,
+      details: panel,
       onChange: function () {
-        saveSetting("wireguard_enabled", !!S.wireguard_enabled).then(function () {
-          saved("Saved");
-        }, function () {});
+        saveSetting("wireguard_enabled", !!S.wireguard_enabled).then(() => saved(), () => {});
       }
     });
-    detailsBody.style.display = S.wireguard_enabled ? "" : "none";
+    panel.style.display = S.wireguard_enabled ? "" : "none";
+    var controls = el("div", "inline-disclosure-right");
+    enabled.toggle.replaceWith(controls);
+    controls.append(tunnelStatus, enabled.toggle);
     body.appendChild(enabled.field);
-
-    function trimmed(value) { return String(value == null ? "" : value).trim(); }
 
     // An empty value clears the setting; anything else must pass isValid and is
     // saved in its canonical form.
@@ -317,7 +298,7 @@
       var inputEl = input("text", S[key], placeholder, maxLength);
       var error = makeFieldError();
       inputEl.onchange = function () {
-        var raw = trimmed(inputEl.value);
+        var raw = inputEl.value.trim();
         if (raw && !isValid(raw)) {
           error.textContent = invalidMessage;
           return;
@@ -325,7 +306,7 @@
         var value = raw && canonical ? canonical(raw) : raw;
         error.textContent = "";
         inputEl.value = value;
-        saveSetting(key, value).then(function () { saved("Saved"); }, function () {});
+        saveWireguardSetting(key, value);
       };
       f.appendChild(inputEl);
       f.appendChild(error);
@@ -348,13 +329,13 @@
     portInput.inputMode = "numeric";
     var portError = makeFieldError();
     portInput.onchange = function () {
-      var value = trimmed(portInput.value);
+      var value = portInput.value.trim();
       if (!isValidWireguardPort(value)) {
         portError.textContent = "Enter a port from 1 to 65535.";
         return;
       }
       portError.textContent = "";
-      saveSetting("wireguard_port", Number(value)).then(function () { saved("Saved"); }, function () {});
+      saveWireguardSetting("wireguard_port", Number(value));
     };
     portField.appendChild(portInput);
     portField.appendChild(portError);
@@ -396,7 +377,7 @@
         connectFieldLabels(keyField);
       });
       row.appendChild(button("Remove", "btn btn-secondary", function () {
-        removeWireguardPrivateKey().then(function () {
+        saveAndVerifyWireguardPrivateKey("").then(function () {
           saved("Private key removed");
           showKeyInput();
         }, function () {
@@ -418,7 +399,7 @@
         buttonText: "Save",
         buttonClass: "btn btn-primary",
         onButtonClick: function (keyInput, saveBtn) {
-          var value = trimmed(keyInput.value);
+          var value = keyInput.value.trim();
           if (!isValidWireguardKey(value)) {
             keyError.textContent = "Enter a 44-character WireGuard key.";
             return;
@@ -446,27 +427,95 @@
     keyField.appendChild(keyHint);
     detailsBody.appendChild(keyField);
 
-    body.appendChild(detailsBody);
-    body.appendChild(status);
-    body.appendChild(restartNotice);
-    var card = makeCollapsibleCard("WireGuard VPN", body, true, tunnelBadge);
+    body.append(panel, status, restartNotice);
     if (nativeAdmin) {
-      window["espframeWatchWireguard"](card, function (state) {
+      window["espframeWatchWireguard"](body, function (state) {
+        restartRequired = state.restart_required;
+        if (restartRequired !== undefined) showRestart(restartRequired);
         S.wireguard_connected = state.connected;
         S.wireguard_tunnel_enabled = state.running;
         S.wireguard_handshake_age = state.handshake_age;
-        updateWireguardStatus(tunnelStatus, tunnelBadge);
+        updateWireguardStatus(tunnelStatus);
       });
     }
-    return card;
+    return body;
   }
 
   function makeFrequencyCard() {
-    // Frequency
     var dispBody = el("div");
-    dispBody.appendChild(productSelectSettingField("Slideshow Interval", "interval"));
+    nativeAdminOnly: if (nativeAdmin) {
+      dispBody.appendChild(nativeDurationSettingField("Slideshow Interval", productSettingOptions("interval"), S.interval,
+        nativeIntervalSeconds, String, 2, 86400, function (seconds) {
+          saveSetting("interval", nativeIntervalLabel(seconds));
+        }));
+    }
+    if (!nativeAdmin) dispBody.appendChild(productSelectSettingField("Slideshow Interval", "interval"));
+    if (hasWritableSetting("slideshow_progress_ring_enabled")) {
+      dispBody.appendChild(toggleSettingRow({
+        label: "Slideshow Progress Ring",
+        value: S.slideshow_progress_ring_enabled,
+        getValue: function () { return S.slideshow_progress_ring_enabled; },
+        setValue: function (value) { S.slideshow_progress_ring_enabled = value; },
+        onChange: function (value) { saveSetting("slideshow_progress_ring_enabled", value); }
+      }).field);
+    }
     return makeCollapsibleCard("Frequency", dispBody, true);
 
+  }
+
+  function makeNativePhotoSourcePanel() {
+    var labels = { all: "All photos", favorites: "Favourites", album: "Album", memories: "On This Day", custom: "Custom filters" };
+    var form = el("form");
+    var sourceField = field("Photo source");
+    var source = selectFromOptions(Object.keys(labels), S.photo_source_mode, syncAlbum,
+      function (value) { return labels[value]; });
+    sourceField.appendChild(source);
+    var albumField = field("Immich album link or ID");
+    var album = input("text", S.album_id, "Paste album link or UUID", 512);
+    var albumHint = el("div", "setting-hint");
+    albumHint.textContent = "The Immich API key needs album.read permission.";
+    albumField.append(album, albumHint);
+    var apply = button("Save photo source", "btn btn-secondary btn-sm") as HTMLButtonElement;
+    apply.type = "submit";
+    var status = el("div", "status");
+    status.setAttribute("role", "status");
+    form.append(sourceField, albumField, apply, status);
+
+    function syncAlbum() {
+      albumField.hidden = source.value !== "album";
+      album.disabled = albumField.hidden;
+      album.required = !albumField.hidden;
+      album.setCustomValidity("");
+    }
+    album.oninput = function () { album.setCustomValidity(""); };
+    syncAlbum();
+
+    form.onsubmit = async function (event) {
+      event.preventDefault();
+      if (apply.disabled) return;
+      var values: ConfigurationValues = { photo_source_mode: source.value };
+      if (source.value === "album") {
+        var albumId = normalizeImmichAlbumId(album.value.trim());
+        if (!albumId || !isValidUuidList(albumId) || albumId.includes(",")) {
+          album.setCustomValidity("Enter one Immich album link or ID.");
+          album.reportValidity();
+          return;
+        }
+        values.album_id = albumId;
+      }
+      source.disabled = album.disabled = apply.disabled = true;
+      setStatus(status, "");
+      try {
+        await saveSettingValues(values);
+        showBanner("Photo source saved.", "success");
+      } catch (_) {
+        setStatus(status, "Could not save the photo source.", "red");
+      } finally {
+        source.disabled = apply.disabled = false;
+        syncAlbum();
+      }
+    };
+    return makeInlineDisclosure("Photo source presets", form, false);
   }
 
   function makeFiltersCard() {
@@ -675,6 +724,8 @@
         inclusionParent.appendChild(addSelect("Matching " + label, matchingKey, !supportsStructured,
           "Choose any selected item to clear the retained all-selected rule.",
           "Any selected " + noun));
+      } else nativeAdminOnly: if (nativeAdmin && supportsStructured) {
+        inclusionParent.appendChild(addSelect("Matching " + label, matchingKey, false, ""));
       }
       addExclusions(details, "Excluded " + label, options.excludedIdKey, options.excludedLabelKey, noun);
       if (options && options.order) {
@@ -701,6 +752,8 @@
       var inclusionHint = el("div", "setting-hint compatibility-disabled");
       inclusionHint.textContent = "Matching all enabled groups with multiple any-selected people or tags requires Immich 3.2 or newer. Choose Match any enabled group, keep only one group enabled, or reduce the people and tag lists to one item.";
       inclusionRecovery.appendChild(inclusionHint);
+    } else nativeAdminOnly: if (nativeAdmin) {
+      addSelect("Inclusion Groups", "inclusion_matching", false, "");
     }
 
     function addValueGroup(label, enabledKey, settingKey, defaultValue, disabled, reason) {
@@ -759,7 +812,12 @@
     });
     locationDetails.style.display = S.location_enabled ? "" : "none";
     body.appendChild(locationDetails);
-    filterCard = makeCollapsibleCard("Filters", body, true, filterBadge);
+    var content = body;
+    nativeAdminOnly: if (nativeAdmin && hasWritableSetting("photo_source_mode") && hasWritableSetting("album_id")) {
+      content = el("div");
+      content.append(makeNativePhotoSourcePanel(), body);
+    }
+    filterCard = makeCollapsibleCard("Filters", content, true, filterBadge);
     syncMemoryFilterUi = function () {
       memoriesActive = S.photo_source === "Memories";
       updateMemoryFilterLock();
@@ -1036,6 +1094,7 @@
   function appendDateFilterControls(parent, onEnabledChange) {
     var DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
     function isValidDate(s) {
+      nativeAdminOnly: if (nativeAdmin) return isValidNativeCaptureDate(s);
       if (!DATE_RE.test(s)) return false;
       var parts = s.split("-");
       var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
@@ -1087,6 +1146,10 @@
     dateToInput.value = S.date_to || "";
     dateToInput.placeholder = "YYYY-MM-DD";
     dateToInput.maxLength = productTextMaxLength("date_to", 10);
+    nativeAdminOnly: if (nativeAdmin) {
+      dateFromInput.min = dateToInput.min = "0002-01-01";
+      dateFromInput.max = dateToInput.max = "9998-12-31";
+    }
     var dateToError = el("div", "field-error");
     fDateTo.appendChild(dateToInput);
     fDateTo.appendChild(dateToError);
@@ -1222,20 +1285,13 @@
       productSettingOptions("portrait_pairing_range"),
       S.portrait_pairing_range,
       function (v) { saveSetting("portrait_pairing_range", v); },
-      function (v) {
-        if (v === "Within 1 Day") return "±1 Day";
-        if (v === "Within 2 Days") return "±2 Days";
-        return v;
-      }
+      function (v) { return v.replace(/^Within /, "±"); }
     );
     pairingRangeSelect.disabled = portraitRotationActive;
     if (portraitRotationActive) pairingRangeSelect.title = pairingOptionsDisabledTitle;
     fPairingRange.appendChild(pairingRangeSelect);
     pairingOptionsBody.appendChild(fPairingRange);
-    if (nativeSettings.has("portrait_pair_framing")) {
-      pairingOptionsBody.appendChild(window["espframePairFraming"](field, selectFromOptions, S.portrait_pair_framing,
-        function (value) { saveSetting("portrait_pair_framing", value); }));
-    }
+    window["espframeNativePortraitPairing"]?.(pairingOptionsBody, field, selectFromOptions, nativeSettings, S, saveSetting);
 
     pairingBody.appendChild(pairingToggle.field);
     pairingOptionsBody.style.display = pairingEnabled ? "" : "none";

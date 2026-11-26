@@ -140,10 +140,11 @@ const nativeSettingGroups: [string, [string, string][]][] = [
   ]],
   ["Photo preparation service", [["prepared_slide_url", "Service URL"], ["prepared_slide_token", "Service access token"]]],
   ["Playback", [
-    ["interval", "Time per photo"], ["photo_orientation", "Display photos"], ["display_mode", "Photo framing"],
+    ["interval", "Time per photo"], ["slideshow_progress_ring_enabled", "Slideshow Progress Ring"],
+    ["photo_orientation", "Display photos"], ["display_mode", "Photo framing"],
     ["transition", "Slideshow transition"], ["transition_speed", "Transition speed"],
     ["portrait_pairing", "Pair portrait photos"],
-    ["portrait_pair_framing", "Portrait pair framing"],
+    ["portrait_pair_framing", "Portrait pair framing"], ["portrait_pair_divider", "Portrait pair divider"],
     ["portrait_pairs_only", "Show paired portraits only"],
     ["portrait_pairing_range", "Pairing range"],
   ]],
@@ -178,7 +179,8 @@ function nativeSecret(key: string): boolean {
 function nativeSettingControl(key: string, value: ConfigurationValue, developer: boolean): HTMLInputElement | HTMLSelectElement {
   const spec = PRODUCT_SETTINGS[key];
   const options = key === "timezone" ? TIMEZONES.slice() : key === "portrait_pair_framing"
-    ? ["Follow photo framing", "Fill", "Fit"] : key === "screen_rotation" && !developer
+    ? ["Follow photo framing", "Fill", "Fit"] : key === "portrait_pair_divider"
+      ? ["Black", "White"] : key === "screen_rotation" && !developer
       ? ["0", "180"] : (spec?.options?.slice() ?? []);
   if (options.length) {
     const current = String(value);
@@ -292,7 +294,7 @@ function nativeSettingsForm(snapshot: ConfigurationSnapshot, savedNotice = ""): 
   }
   const pairing = controls.get("portrait_pairing")?.element;
   const pairingOptions = [controls.get("portrait_pairs_only")?.element, controls.get("portrait_pairing_range")?.element,
-    controls.get("portrait_pair_framing")?.element];
+    controls.get("portrait_pair_framing")?.element, controls.get("portrait_pair_divider")?.element];
   const preparedUrl = controls.get("prepared_slide_url");
   const preparedToken = controls.get("prepared_slide_token")?.element;
   const nameInput = controls.get("frame_name")?.element;

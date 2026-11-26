@@ -7,7 +7,6 @@
   function settingsCardRenderers() {
     return {
       makeConnectionCard: makeConnectionCard,
-      makeWireguardCard: makeWireguardCard,
       makeFrequencyCard: makeFrequencyCard,
       makeMemoriesCard: makeMemoriesCard,
       makeFiltersCard: makeFiltersCard,
@@ -80,7 +79,6 @@
     var settingsCardEntries = renderSettingsCardEntriesForTab("settings");
     if (!immichCards.length && !nativeAdmin) immichCards = [
       makeConnectionCard(),
-      makeWireguardCard(),
       makeFrequencyCard(),
       makePortraitPairingCard(),
       makeMemoriesCard(),
@@ -106,13 +104,6 @@
       { section: "System", element: makeDeveloperCard() }
     ];
     appendSettingsSections(wrap, settingsCardEntries);
-    if (nativeAdmin) {
-      var tools = document.createElement("a");
-      tools.className = "btn btn-secondary btn-sm";
-      tools.href = "/settings";
-      tools.textContent = "Photo sources & device tools";
-      wrap.appendChild(tools);
-    }
     app.appendChild(wrap);
     connectFieldLabels(app);
     connectFieldLabels(immichApp);

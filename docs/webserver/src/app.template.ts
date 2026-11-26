@@ -6,6 +6,7 @@ import { EspframeApiClient, EspframeApiError, type LegacySettingWrite } from "./
 import {
   MAX_PHOTO_ID_FIELD_LENGTH, extractUrlHost, extractUrlPort, isValidHttpUrl,
   normalizeImmichUrl, normalizeNtpServer, normalizeDateTakenFormat,
+  normalizeImmichAlbumId, nativeIntervalSeconds, nativeIntervalLabel, isValidNativeCaptureDate,
   parsePhotoLabelList, photoIdFieldTooLong, photoLabelFieldTooLong,
   splitPhotoIdList, isValidUuidList, formatWireguardHandshakeAge, isValidWireguardKey, isValidWireguardAddress,
   isValidIpv4Netmask, isValidWireguardPort, isValidWireguardEndpoint, normalizeWireguardAllowedIps
@@ -88,7 +89,8 @@ import {
     if (!PRODUCT_SETTINGS) return;
     Object.keys(PRODUCT_SETTINGS).forEach(function (key) {
       var spec = PRODUCT_SETTINGS[key];
-      if (!spec) return;
+      // Keep this optional entity absent until a compatible frame reports it.
+      if (!spec || key === "slideshow_progress_ring_enabled") return;
       if (S[key] === undefined) S[key] = spec.default !== undefined ? spec.default : "";
     });
   }
@@ -329,6 +331,7 @@ import {
   }
 
   function hasWritableSetting(key) {
+    if (key === "slideshow_progress_ring_enabled" && S[key] === undefined) return false;
     return nativeAdmin ? nativeSettings.has(key) : !!endpoints[key];
   }
 
