@@ -344,19 +344,21 @@ Both builds use `espframe_ota_test_vN.bin` for their app filenames.
 
 ### Recover Wi-Fi from the frame
 
-A fresh frame opens a protected setup hotspot when it has no saved Wi-Fi.
-A configured frame opens it after 90 seconds without a home-network address.
-The frame displays the `espframe_` network name and a password generated at
-boot over the photo when the screen is awake and idle. If the screen is asleep,
-tap it to wake it. Cached photos remain available to swipe.
+When the frame has no saved Wi-Fi, use the USB installer or join the open
+`espframe_` network shown on the frame from a phone or laptop. The Wi-Fi
+setup page opens automatically on supported devices. You can also visit
+`http://192.168.4.1` directly. Choose a nearby Wi-Fi network or enter its
+name manually, then enter its password. The frame tests the connection
+before saving the credentials. Rejoin your usual Wi-Fi and open the address
+shown on the frame and in the setup page to continue. The frame keeps its
+Immich Setup screen and browser directions visible until you save an Immich
+server URL and API key.
 
-Join that network on a phone or laptop and open `http://192.168.4.1` in a
-browser. Enter the home network name and its password. The frame tests the
-connection and waits for an IPv4 address before saving the new credentials.
-If the trial fails, try again on the setup network. Existing Immich and
-playback settings stay in place. The setup hotspot turns off 15 seconds after
-the frame reconnects to home Wi-Fi, which gives the browser time to show the
-new address. Use the USB installer to enter Immich settings on a fresh frame.
+A configured frame opens a password-protected recovery hotspot after 90
+seconds without a home-network address. The frame shows its network name and
+password over the photo when the screen is awake and idle. Tap the screen
+to wake it. Cached photos remain available to swipe. When Wi-Fi is restored,
+the hotspot stays up for 15 seconds so the browser can show the new address.
 
 An older native prototype needs one USB install to add the update slots. Export
 a backup first and leave the installer's full erase option unchecked to retain
@@ -503,8 +505,8 @@ languages redraws cached captions in the background. Before time sync the
 frame shows the capture date. Once time is available, the player refreshes
 cached captions in the background.
 When changing status translations, rerun `firmware/native/tools/rasterize_status.py`
-with Pillow, `python-bidi==0.6.6`, and the two font faces recorded in
-`product/source-ownership.json`. Running it with just the output path checks
+with Pillow, `python-bidi==0.6.6`, and the Noto Sans and Material Design Icons
+font faces recorded in `product/source-ownership.json`. Running it with just the output path checks
 that the shipped masks match the current catalogue.
 Turning on relative captions, a relative capture-date filter, or Memories
 requests time sync even when the clock is hidden.
@@ -609,6 +611,60 @@ and ESPHome has confirmed the app. It also verifies the partition layout
 and the other OTA target. Read the result before any other reboot or
 update, since a normal reboot of a confirmed app cannot prove rollback.
 Keep the working ESPHome OTA binary and USB recovery available.
+
+#### Check boot readiness for automatic migration
+
+The optional `builds/guition-esp32-p4-jc8012p4a1[-v2|-v3].native-migration-readiness.yaml`
+builds exercise the same check on all three board revisions. Build the file
+matching the frame and use the same ESP-Hosted version as the installed
+ESPHome build. On a dedicated ESPHome test frame, upload just the diagnostic
+app over OTA and read **Native migration boot readiness** before rebooting
+again. **Ready** means the board's ESPHome app, flash layout and alternate OTA
+slot match, and this boot demonstrated rollback support and confirmed the app.
+The diagnostic build keeps running ESPHome. Settings compatibility and
+successful native startup still need separate checks before migration.
+
+#### Test the automatic V1 handoff locally
+
+Build an app for the legacy ESPHome slots with ESP-IDF:
+
+```sh
+idf.py -C firmware/native -B firmware/native/build/legacy-v1 \
+  -D SWIPE_BOARD=v1 -D NATIVE_LEGACY_MIGRATION=ON build
+```
+
+Serve `espframe_legacy_v1.bin` from a test host on the frame's network. Build
+`builds/guition-esp32-p4-jc8012p4a1.native-migration-bridge.yaml` with
+`native_migration_enabled=true`, the local `native_migration_url`, and the
+candidate's `native_migration_md5`. Use an OTA app upload for the bridge on the
+dedicated V1 running stock ESPHome. Keep the original firmware and USB
+recovery available.
+
+The bridge checks Auto Update, active playback, and rollback readiness before
+it snapshots the current stock settings and fetches the pinned candidate.
+The snapshot stays on the device. The native build reads the retained Wi-Fi,
+Immich, and Home Assistant records and stores its settings in a separate NVS
+namespace. It confirms the boot after displaying an Immich photo and receiving
+a valid touch-controller report. The bridge can retry transport failures on
+the same confirmed ESPHome boot. A rollback starts a new boot and the bridge
+requires a fresh rollback-capable ESPHome boot before it can migrate again.
+Frames with configured WireGuard stay on ESPHome.
+
+For the full private rehearsal, build
+`builds/guition-esp32-p4-jc8012p4a1.native-migration-rehearsal.yaml` with
+`firmware_manifest_url` pointing at a LAN ESPHome release manifest whose OTA
+entry is the bridge. Give the bridge a greater stable version and point its
+manifest at the same LAN URL. Load the stock-equivalent rehearsal factory
+image on the V1 and let its ordinary auto-update component install the bridge.
+
+Build the native candidates with distinct `NATIVE_PREVIEW_VERSION` values
+and the same `NATIVE_LEGACY_REHEARSAL_FEED` ending in `/`. The private feed
+uses the native preview index shape and SHA-256 verified app downloads.
+Expose the next candidate only after the previous boot is confirmed. The
+private build checks on a short cadence and allows a startup failure fixture
+with `NATIVE_LEGACY_REHEARSAL_FAIL=ON`. Keep the failure fixture on the test
+feed and verify that the previous app returns without repeatedly staging
+the rejected image. Public firmware feeds remain separate from the rehearsal.
 
 #### Test live Immich over Wi-Fi
 
